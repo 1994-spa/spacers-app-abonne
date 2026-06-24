@@ -305,7 +305,7 @@ function ScreenAccueil({ abonne, matchs }) {
           <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:11,flex:1,textAlign:"center",color:B.white,lineHeight:1.4}}>{match.away}</div>
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>
-          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":",""[0]+"h"[0])}
+          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":","h")}
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>📍 {match.venue}</div>
       </div>
