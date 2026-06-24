@@ -151,120 +151,72 @@ function Toast({ msg, type, onClose }) {
 
 /* ── LOGIN SCREEN ────────────────────────────────────────── */
 function LoginScreen({ onLogin }) {
-  const [email,setEmail]       = useState("");
-  const [password,setPassword] = useState("");
-  const [showPass,setShowPass] = useState(false);
-  const [err,setErr]           = useState("");
-  const [loading,setLoading]   = useState(false);
-  const [forgotSent,setForgotSent] = useState(false);
-  const [mode,setMode]         = useState("login"); // login | forgot
+  const [email,setEmail] = useState("");
+  const [sent,setSent]   = useState(false);
+  const [err,setErr]     = useState("");
+  const [loading,setLoading] = useState(false);
 
-  async function handleLogin() {
-    if(!email.trim()||!password.trim()) return;
+  async function sendLink() {
+    if(!email.trim()) return;
     setLoading(true); setErr("");
     try {
-      const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+      const res = await fetch(`${SUPA_URL}/auth/v1/otp`, {
         method: "POST",
         headers: { "apikey": SUPA_ANON, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          create_user: false,
+        }),
       });
-      const data = await res.json();
-      if(!res.ok) {
-        setErr(data.error_description || data.msg || "Email ou mot de passe incorrect.");
-      } else {
-        const sess = {
-          access_token:  data.access_token,
-          refresh_token: data.refresh_token,
-          expires_at:    Math.floor(Date.now()/1000) + (data.expires_in || 3600),
-          user:          data.user,
-        };
-        localStorage.setItem("sb_session", JSON.stringify(sess));
-        onLogin(sess);
+      if(res.ok) { setSent(true); }
+      else {
+        const body = await res.json().catch(()=>({}));
+        setErr(body.msg || "Email non trouvé. Vérifie que tu es bien abonné.");
       }
     } catch { setErr("Erreur de connexion, réessaie."); }
     setLoading(false);
   }
 
-  async function handleForgot() {
-    if(!email.trim()) return;
-    setLoading(true); setErr("");
-    try {
-      await fetch(`${SUPA_URL}/auth/v1/recover`, {
-        method: "POST",
-        headers: { "apikey": SUPA_ANON, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-      setForgotSent(true);
-    } catch { setErr("Erreur, réessaie."); }
-    setLoading(false);
-  }
-
-  return (
-    <div style={{minHeight:"100vh",background:B.night,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.18,filter:"blur(2px)",zIndex:0}}/>
-      <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom,${B.night}80 0%,${B.night}95 60%,${B.night} 100%)`,zIndex:0}}/>
-      <Stars/>
-      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:360}}>
-        <div style={{textAlign:"center",marginBottom:36}}>
-          <SpacersLogo height={110} vertical/>
-        </div>
-
-        {mode==="login" && !forgotSent && <>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:6,textAlign:"center"}}>Ton espace abonné</div>
-          <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:24,lineHeight:1.8}}>Connecte-toi avec ton email et ton mot de passe.</div>
-
-          <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&document.getElementById("pass-input").focus()}
-            placeholder="ton@email.fr" type="email" autoFocus
-            style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:10,transition:"border-color .2s"}}/>
-
-          <div style={{position:"relative",marginBottom:8}}>
-            <input id="pass-input" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="Mot de passe" type={showPass?"text":"password"}
-              style={{width:"100%",padding:"14px 48px 14px 16px",background:B.nightLL,border:`1.5px solid ${password?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",transition:"border-color .2s"}}/>
-            <button onClick={()=>setShowPass(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:16}}>
-              {showPass?"🙈":"👁️"}
-            </button>
-          </div>
-
-          {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center",padding:"8px",background:B.red+"15",borderRadius:8}}>{err}</div>}
-
-          <button onClick={handleLogin} disabled={!email.trim()||!password.trim()||loading}
-            style={{width:"100%",padding:"15px",background:(email.trim()&&password.trim())?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:(email.trim()&&password.trim())?"pointer":"not-allowed",transition:"all .2s",letterSpacing:1,marginBottom:14}}>
-            {loading?"Connexion…":"SE CONNECTER ✦"}
-          </button>
-
-          <button onClick={()=>setMode("forgot")} style={{width:"100%",background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer",textAlign:"center"}}>
-            Mot de passe oublié ?
-          </button>
-        </>}
-
-        {mode==="forgot" && !forgotSent && <>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:6,textAlign:"center"}}>Mot de passe oublié</div>
-          <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:24,lineHeight:1.8}}>Entre ton email — tu recevras un lien pour réinitialiser ton mot de passe.</div>
-          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="ton@email.fr" type="email" autoFocus
-            style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
-          {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center"}}>{err}</div>}
-          <button onClick={handleForgot} disabled={!email.trim()||loading}
-            style={{width:"100%",padding:"15px",background:email.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:email.trim()?"pointer":"not-allowed",marginBottom:14}}>
-            {loading?"Envoi…":"ENVOYER LE LIEN ✦"}
-          </button>
-          <button onClick={()=>setMode("login")} style={{width:"100%",background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>← Retour</button>
-        </>}
-
-        {forgotSent && <>
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:48,marginBottom:16}}>📧</div>
-            <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white,marginBottom:10}}>Email envoyé !</div>
-            <div style={{fontSize:12,color:B.muted,lineHeight:1.8,marginBottom:20}}>Vérifie ta boîte mail et clique sur le lien pour créer ton nouveau mot de passe.</div>
-            <button onClick={()=>{setMode("login");setForgotSent(false);}} style={{background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>← Retour à la connexion</button>
-          </div>
-        </>}
+  return <div style={{minHeight:"100vh",background:B.night,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.18,filter:"blur(2px)",zIndex:0}}/>
+    <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, ${B.night}80 0%, ${B.night}95 60%, ${B.night} 100%)`,zIndex:0}}/>
+    <Stars/>
+    <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:380}}>
+      <div style={{textAlign:"center",marginBottom:40}}>
+        <SpacersLogo height={110} vertical/>
       </div>
+
+      {!sent ? <>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:6,textAlign:"center"}}>Ton espace abonné</div>
+        <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:28,lineHeight:1.8}}>Entre ton email d'abonnement — tu recevras un lien de connexion instantané.</div>
+        <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendLink()}
+          placeholder="ton@email.fr" type="email" autoFocus
+          style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
+        {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center"}}>{err}</div>}
+        <button onClick={sendLink} disabled={!email.trim()||loading}
+          style={{width:"100%",padding:"15px",background:email.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:email.trim()?"pointer":"not-allowed",transition:"all .2s",letterSpacing:1}}>
+          {loading ? "Envoi en cours…" : "RECEVOIR MON LIEN ✦"}
+        </button>
+      </> : <>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:16}}>📧</div>
+          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:10}}>Lien envoyé !</div>
+          <div style={{fontSize:13,color:B.mutedL,lineHeight:1.8,marginBottom:6}}>Vérifie ta boîte mail</div>
+          <div style={{fontSize:14,color:B.day,fontWeight:700,marginBottom:24}}>{email}</div>
+          <div style={{fontSize:12,color:B.muted,lineHeight:1.8,padding:"14px 16px",background:B.nightLL,borderRadius:12,border:`1px solid ${B.nightB}`,marginBottom:20}}>
+            Clique sur le lien dans l'email → tu seras connecté automatiquement dans cette app.
+          </div>
+          <button onClick={()=>{setSent(false);setEmail("");setErr("");}}
+            style={{background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
+            ← Utiliser un autre email
+          </button>
+        </div>
+      </>}
     </div>
-  );
+  </div>;
 }
 
-
+/* ── RGPD SHEET ──────────────────────────────────────────── */
 function RgpdSheet({ onAccept }) {
   const [c,setC] = useState({analytics:false,marketing:false});
   const items = [
