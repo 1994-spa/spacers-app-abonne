@@ -714,8 +714,18 @@ function ScreenCommunaute({ abonne, token }) {
   useEffect(()=>{
     async function init() {
       try {
-        const matchs = await api.get("/matchs", token, { fil_ouvert:"eq.true", order:"date_match.asc" });
-        setMatchsFil(matchs||[]);
+        // On récupère tous les matchs, puis on calcule l'ouverture des fils côté client (J−15, sans cron).
+        const matchs = await api.get("/matchs", token, { order:"date_match.asc" });
+        const now   = Date.now();
+        const J15   = 15 * 86400000;  // 15 jours en ms
+        const GRACE = 7  * 86400000;  // on garde le fil ouvert jusqu'à 7 j après le match (J+7)
+        const ouverts = (matchs||[]).filter(m=>{
+          if(m.fil_ouvert===true) return true;          // override manuel (staff)
+          if(!m.date_match) return false;
+          const diff = new Date(m.date_match).getTime() - now;  // >0 = à venir, <0 = passé
+          return diff <= J15 && diff >= -GRACE;          // ouvert de J−15 jusqu'à J+7
+        });
+        setMatchsFil(ouverts);
       } catch(e){console.error(e);}
       setLoading(false);
     }
@@ -812,6 +822,10 @@ function ScreenCommunaute({ abonne, token }) {
             const isHome = m.home?.includes("Spacer");
             const adversaire = isHome ? m.away : m.home;
             const date = new Date(m.date_match).toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
+            const fmt = d => new Date(d).toLocaleDateString("fr-FR",{day:"numeric",month:"short"});
+            const dM = new Date(m.date_match).getTime();
+            const ouverture = fmt(dM - 15*86400000);  // J−15
+            const fermeture = fmt(dM + 7*86400000);   // J+7
             return (
               <button key={m.id} onClick={()=>openFil("match",m)}
                 style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${B.nightB}`,borderRadius:14,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",marginBottom:10,transition:"border-color .2s"}}
@@ -821,6 +835,7 @@ function ScreenCommunaute({ abonne, token }) {
                 <div>
                   <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>vs {adversaire}</div>
                   <div style={{fontSize:11,color:B.muted}}>{date} · {isHome?"Domicile":"Extérieur"}</div>
+                  <div style={{fontSize:10,color:B.muted,marginTop:3}}>🟢 Ouvert {ouverture} · 🔴 Fermé {fermeture}</div>
                 </div>
                 <div style={{marginLeft:"auto",color:B.muted,fontSize:18}}>→</div>
               </button>
