@@ -708,7 +708,7 @@ function ScreenCommunaute({ abonne, token }) {
   const [epingles,setEpingles]   = useState([]);
   const [input,setInput]     = useState("");
   const [loading,setLoading] = useState(true);
-  const [section,setSection] = useState("general"); // general | matchs
+  const [section,setSection] = useState("matchs"); // "matchs" = liste; l'onglet Général ouvre directement la conversation
   const bottomRef = useRef(null);
 
   useEffect(()=>{
@@ -782,7 +782,7 @@ function ScreenCommunaute({ abonne, token }) {
       {/* Onglets principaux */}
       <div style={{display:"flex",gap:10,marginBottom:24}}>
         {[{id:"general",icon:"💬",label:"Général"},{id:"matchs",icon:"🏐",label:"Matchs"}].map(t=>(
-          <button key={t.id} onClick={()=>setSection(t.id)}
+          <button key={t.id} onClick={()=> t.id==="general" ? openFil("general") : setSection(t.id)}
             style={{flex:1,padding:"14px 10px",borderRadius:14,border:`2px solid ${section===t.id?B.day:B.nightB}`,background:section===t.id?`${B.day}18`:B.nightLL,color:section===t.id?B.day:B.muted,fontFamily:"inherit",fontWeight:700,fontSize:13,cursor:"pointer",transition:"all .2s",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
             <span style={{fontSize:24}}>{t.icon}</span>
             <span>{t.label}</span>
@@ -790,23 +790,7 @@ function ScreenCommunaute({ abonne, token }) {
         ))}
       </div>
 
-      {/* Section Général */}
-      {section==="general" && (
-        <div>
-          <div style={{fontSize:10,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Fil permanent · Toute la saison</div>
-          <button onClick={()=>openFil("general")}
-            style={{width:"100%",padding:"16px",background:`linear-gradient(135deg,${B.day}18,${B.nightLL})`,border:`1.5px solid ${B.day}40`,borderRadius:14,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",transition:"border-color .2s"}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=B.day}
-            onMouseLeave={e=>e.currentTarget.style.borderColor=`${B.day}40`}>
-            <div style={{width:44,height:44,borderRadius:12,background:`${B.day}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>💬</div>
-            <div>
-              <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>Fil Général · Saison 2026-27</div>
-              <div style={{fontSize:11,color:B.muted}}>Ouvert toute l'année · Échangez librement</div>
-            </div>
-            <div style={{marginLeft:"auto",color:B.day,fontSize:18}}>→</div>
-          </button>
-        </div>
-      )}
+      {/* L'onglet « Général » ouvre directement la conversation — plus de carte intermédiaire */}
 
       {/* Section Matchs */}
       {section==="matchs" && (
