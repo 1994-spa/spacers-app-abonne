@@ -151,169 +151,72 @@ function Toast({ msg, type, onClose }) {
 
 /* ── LOGIN SCREEN ────────────────────────────────────────── */
 function LoginScreen({ onLogin }) {
-  const [step,setStep]       = useState("email"); // email | password | select
-  const [email,setEmail]     = useState("");
-  const [password,setPassword] = useState("");
-  const [showPass,setShowPass] = useState(false);
-  const [billets,setBillets]  = useState([]);
-  const [session,setSession]  = useState(null);
-  const [err,setErr]          = useState("");
-  const [loading,setLoading]  = useState(false);
+  const [email,setEmail] = useState("");
+  const [sent,setSent]   = useState(false);
+  const [err,setErr]     = useState("");
+  const [loading,setLoading] = useState(false);
 
-  async function handleLogin() {
-    if(!email.trim()||!password.trim()) return;
+  async function sendLink() {
+    if(!email.trim()) return;
     setLoading(true); setErr("");
     try {
-      const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+      const res = await fetch(`${SUPA_URL}/auth/v1/otp`, {
         method: "POST",
         headers: { "apikey": SUPA_ANON, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          create_user: false,
+        }),
       });
-      const data = await res.json();
-      if(!res.ok) {
-        setErr(data.error_description || "Email ou mot de passe incorrect.");
-        setLoading(false); return;
-      }
-      // Session OK → chercher les billets de cet email
-      const sess = {
-        access_token:  data.access_token,
-        refresh_token: data.refresh_token,
-        expires_at:    Math.floor(Date.now()/1000) + (data.expires_in||3600),
-        user:          data.user,
-      };
-      setSession(sess);
-      // Charger les billets liés à cet email
-      const abonnesRes = await fetch(
-        `${SUPA_URL}/rest/v1/abonnes?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&order=prenom.asc`,
-        { headers: { "apikey": SUPA_ANON, "Authorization": `Bearer ${data.access_token}` } }
-      );
-      const abonnes = await abonnesRes.json();
-      if(!abonnes?.length) {
-        setErr("Aucun abonnement trouvé pour cet email.");
-        setLoading(false); return;
-      }
-      if(abonnes.length === 1) {
-        // Un seul billet → connexion directe
-        localStorage.setItem("spacers_abonne", JSON.stringify(abonnes[0]));
-        localStorage.setItem("sb_session", JSON.stringify(sess));
-        onLogin(abonnes[0]);
-      } else {
-        // Plusieurs billets → sélecteur
-        setBillets(abonnes);
-        setStep("select");
+      if(res.ok) { setSent(true); }
+      else {
+        const body = await res.json().catch(()=>({}));
+        setErr(body.msg || "Email non trouvé. Vérifie que tu es bien abonné.");
       }
     } catch { setErr("Erreur de connexion, réessaie."); }
     setLoading(false);
   }
 
-  async function handleForgot() {
-    if(!email.trim()) { setErr("Entre ton email d'abord."); return; }
-    setLoading(true); setErr("");
-    try {
-      await fetch(`${SUPA_URL}/auth/v1/recover`, {
-        method: "POST",
-        headers: { "apikey": SUPA_ANON, "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-      setErr("✅ Email envoyé ! Vérifie ta boîte mail.");
-    } catch { setErr("Erreur, réessaie."); }
-    setLoading(false);
-  }
-
-  function selectBillet(abonne) {
-    localStorage.setItem("spacers_abonne", JSON.stringify(abonne));
-    if(session) localStorage.setItem("sb_session", JSON.stringify(session));
-    onLogin(abonne);
-  }
-
-  return (
-    <div style={{minHeight:"100vh",background:B.night,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.18,filter:"blur(2px)",zIndex:0}}/>
-      <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom,${B.night}80 0%,${B.night}95 60%,${B.night} 100%)`,zIndex:0}}/>
-      <Stars/>
-      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:360}}>
-        <div style={{textAlign:"center",marginBottom:36}}>
-          <SpacersLogo height={110} vertical/>
-        </div>
-
-        {step==="email" && <>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:6,textAlign:"center"}}>Ton espace abonné</div>
-          <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:24,lineHeight:1.8}}>Connecte-toi avec l'email de ton abonnement Tickie.</div>
-
-          <input value={email} onChange={e=>setEmail(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&setStep("password")}
-            placeholder="ton@email.fr" type="email" autoFocus
-            style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
-
-          {err && <div style={{fontSize:11,color:err.startsWith("✅")?B.green:B.red,marginBottom:10,textAlign:"center",padding:"8px",background:err.startsWith("✅")?`${B.green}15`:`${B.red}15`,borderRadius:8}}>{err}</div>}
-
-          <button onClick={()=>email.trim()&&setStep("password")} disabled={!email.trim()}
-            style={{width:"100%",padding:"15px",background:email.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:email.trim()?"pointer":"not-allowed",marginBottom:12,letterSpacing:1}}>
-            CONTINUER →
-          </button>
-          <button onClick={handleForgot} disabled={loading}
-            style={{width:"100%",padding:"10px",background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
-            Première connexion / Mot de passe oublié ?
-          </button>
-        </>}
-
-        {step==="password" && <>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:4,textAlign:"center"}}>Mot de passe</div>
-          <div style={{fontSize:12,color:B.day,textAlign:"center",marginBottom:20,fontWeight:700}}>{email}</div>
-
-          <div style={{position:"relative",marginBottom:12}}>
-            <input id="pass-input" value={password} onChange={e=>setPassword(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
-              placeholder="Mot de passe" type={showPass?"text":"password"} autoFocus
-              style={{width:"100%",padding:"14px 48px 14px 16px",background:B.nightLL,border:`1.5px solid ${password?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",transition:"border-color .2s"}}/>
-            <button onClick={()=>setShowPass(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:16}}>
-              {showPass?"🙈":"👁️"}
-            </button>
-          </div>
-
-          {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center",padding:"8px",background:`${B.red}15`,borderRadius:8}}>{err}</div>}
-
-          <button onClick={handleLogin} disabled={!password.trim()||loading}
-            style={{width:"100%",padding:"15px",background:password.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:password.trim()?"pointer":"not-allowed",marginBottom:12,letterSpacing:1}}>
-            {loading?"Connexion…":"SE CONNECTER ✦"}
-          </button>
-          <button onClick={()=>{setStep("email");setErr("");setPassword("");}}
-            style={{width:"100%",padding:"10px",background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
-            ← Changer d'email
-          </button>
-        </>}
-
-        {step==="select" && <>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white,marginBottom:6,textAlign:"center"}}>Qui es-tu ?</div>
-          <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:20,lineHeight:1.7}}>
-            Plusieurs abonnements sont liés à cet email.<br/>Sélectionne ton billet.
-          </div>
-          {billets.map((b,i) => (
-            <button key={i} onClick={()=>selectBillet(b)}
-              style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:12,marginBottom:10,textAlign:"left",transition:"border-color .2s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=B.day}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=B.nightB}>
-              <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${B.day},#5B9BD5)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.night,flexShrink:0}}>
-                {b.prenom?.[0]?.toUpperCase()}
-              </div>
-              <div>
-                <div style={{fontSize:14,fontWeight:700}}>{b.prenom} {b.nom}</div>
-                <div style={{fontSize:11,color:B.muted,marginTop:2}}>{b.formule} · {b.tribune||"Tribune Saint-Pierre"} {b.siege}</div>
-              </div>
-              <div style={{marginLeft:"auto",fontSize:18,color:B.muted}}>→</div>
-            </button>
-          ))}
-          <button onClick={()=>{setStep("email");setBillets([]);setErr("");setPassword("");}}
-            style={{width:"100%",padding:"10px",background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer",marginTop:4}}>
-            ← Retour
-          </button>
-        </>}
+  return <div style={{minHeight:"100vh",background:B.night,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.18,filter:"blur(2px)",zIndex:0}}/>
+    <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, ${B.night}80 0%, ${B.night}95 60%, ${B.night} 100%)`,zIndex:0}}/>
+    <Stars/>
+    <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:380}}>
+      <div style={{textAlign:"center",marginBottom:40}}>
+        <SpacersLogo height={110} vertical/>
       </div>
+
+      {!sent ? <>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:6,textAlign:"center"}}>Ton espace abonné</div>
+        <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:28,lineHeight:1.8}}>Entre ton email d'abonnement — tu recevras un lien de connexion instantané.</div>
+        <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendLink()}
+          placeholder="ton@email.fr" type="email" autoFocus
+          style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
+        {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center"}}>{err}</div>}
+        <button onClick={sendLink} disabled={!email.trim()||loading}
+          style={{width:"100%",padding:"15px",background:email.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:email.trim()?"pointer":"not-allowed",transition:"all .2s",letterSpacing:1}}>
+          {loading ? "Envoi en cours…" : "RECEVOIR MON LIEN ✦"}
+        </button>
+      </> : <>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:48,marginBottom:16}}>📧</div>
+          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:10}}>Lien envoyé !</div>
+          <div style={{fontSize:13,color:B.mutedL,lineHeight:1.8,marginBottom:6}}>Vérifie ta boîte mail</div>
+          <div style={{fontSize:14,color:B.day,fontWeight:700,marginBottom:24}}>{email}</div>
+          <div style={{fontSize:12,color:B.muted,lineHeight:1.8,padding:"14px 16px",background:B.nightLL,borderRadius:12,border:`1px solid ${B.nightB}`,marginBottom:20}}>
+            Clique sur le lien dans l'email → tu seras connecté automatiquement dans cette app.
+          </div>
+          <button onClick={()=>{setSent(false);setEmail("");setErr("");}}
+            style={{background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
+            ← Utiliser un autre email
+          </button>
+        </div>
+      </>}
     </div>
-  );
+  </div>;
 }
 
-
+/* ── RGPD SHEET ──────────────────────────────────────────── */
 function RgpdSheet({ onAccept }) {
   const [c,setC] = useState({analytics:false,marketing:false});
   const items = [
@@ -402,7 +305,7 @@ function ScreenAccueil({ abonne, matchs }) {
           <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:11,flex:1,textAlign:"center",color:B.white,lineHeight:1.4}}>{match.away}</div>
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>
-          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":", "h")}
+          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":",""[0]+"h"[0])}
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>📍 {match.venue}</div>
       </div>
@@ -883,31 +786,42 @@ export default function App() {
     ${Array.from({length:4},(_,i)=>`@keyframes tw${i}{0%,100%{opacity:.2}50%{opacity:.7}}`).join("")}
   `;
 
-  // Charger la session au démarrage
+  // Charger la session au démarrage (+ détecter token dans URL hash)
   useEffect(()=>{
     async function init() {
-      const stored   = localStorage.getItem("spacers_abonne");
-      const storedSess = localStorage.getItem("sb_session");
-      if(stored) {
-        try {
-          const ab   = JSON.parse(stored);
-          const sess = storedSess ? JSON.parse(storedSess) : null;
-          // Vérifier expiration session
-          if(sess && sess.expires_at * 1000 < Date.now()) {
-            localStorage.removeItem("spacers_abonne");
-            localStorage.removeItem("sb_session");
-            setLoading(false); return;
-          }
-          setAbonne(ab);
-          setRgpd({ essential:true, analytics:ab.rgpd_analytics||false, marketing:ab.rgpd_marketing||false });
-          const token = sess?.access_token || SUPA_ANON;
-          const matchsData = await api.get("/matchs", token, { order:"date_match.asc", limit:10 });
-          setMatchs(matchsData||[]);
-          if(!ab.rgpd_analytics && !ab.rgpd_marketing) setShowRgpd(true);
-        } catch(e) {
-          localStorage.removeItem("spacers_abonne");
-          localStorage.removeItem("sb_session");
+      // Détecter le token Supabase dans l'URL hash (magic link redirect)
+      const hash = window.location.hash;
+      if(hash && hash.includes("access_token=")) {
+        const params = new URLSearchParams(hash.substring(1));
+        const access_token  = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+        const expires_in    = parseInt(params.get("expires_in") || "3600");
+        if(access_token) {
+          // Récupérer les infos user depuis le token
+          const userRes = await fetch(`${SUPA_URL}/auth/v1/user`, {
+            headers: { "apikey": SUPA_ANON, "Authorization": `Bearer ${access_token}` }
+          });
+          const user = userRes.ok ? await userRes.json() : null;
+          const sess = {
+            access_token,
+            refresh_token,
+            expires_at: Math.floor(Date.now()/1000) + expires_in,
+            user,
+          };
+          localStorage.setItem("sb_session", JSON.stringify(sess));
+          // Nettoyer l'URL
+          window.history.replaceState(null, "", window.location.pathname);
+          setSession(sess);
+          await loadUserData(sess);
+          setLoading(false);
+          return;
         }
+      }
+      // Session classique
+      const sess = await api.getSession();
+      if(sess) {
+        setSession(sess);
+        await loadUserData(sess);
       }
       setLoading(false);
     }
@@ -937,20 +851,15 @@ export default function App() {
     }
   }
 
-  async function handleLogin(abonneData) {
-    setAbonne(abonneData);
-    setRgpd({ essential:true, analytics:abonneData.rgpd_analytics||false, marketing:abonneData.rgpd_marketing||false });
+  function handleLogin(sess) {
+    setSession(sess);
     setLoading(true);
-    try {
-      const matchsData = await api.get("/matchs", SUPA_ANON, { order:"date_match.asc", limit:10 });
-      setMatchs(matchsData||[]);
-    } catch(e) { console.error(e); }
-    if(!abonneData.rgpd_analytics && !abonneData.rgpd_marketing) setShowRgpd(true);
-    setLoading(false);
+    loadUserData(sess).then(()=>setLoading(false));
   }
 
   function handleLogout() {
-    localStorage.removeItem("spacers_abonne");
+    localStorage.removeItem("sb_session");
+    setSession(null);
     setAbonne(null);
     setTab("home");
   }
@@ -964,14 +873,14 @@ export default function App() {
     </div>
   );
 
-  if(!abonne) return (
+  if(!session) return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
       <style>{CSS}</style>
       <LoginScreen onLogin={handleLogin}/>
     </div>
   );
 
-  const token = SUPA_ANON;
+  const token = session.access_token;
 
   return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white,position:"relative"}}>
