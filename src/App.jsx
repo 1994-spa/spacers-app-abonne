@@ -151,72 +151,216 @@ function Toast({ msg, type, onClose }) {
 
 /* ── LOGIN SCREEN ────────────────────────────────────────── */
 function LoginScreen({ onLogin }) {
-  const [email,setEmail] = useState("");
-  const [sent,setSent]   = useState(false);
-  const [err,setErr]     = useState("");
-  const [loading,setLoading] = useState(false);
+  const [email,setEmail]       = useState("");
+  const [password,setPassword] = useState("");
+  const [showPass,setShowPass] = useState(false);
+  const [mode,setMode]         = useState("login"); // login | forgot | sent
+  const [billets,setBillets]   = useState([]);
+  const [sess,setSess]         = useState(null);
+  const [err,setErr]           = useState("");
+  const [loading,setLoading]   = useState(false);
+  const [step,setStep]         = useState("form"); // form | select
 
-  async function sendLink() {
-    if(!email.trim()) return;
+  async function handleLogin() {
+    if(!email.trim()||!password.trim()) return;
     setLoading(true); setErr("");
     try {
-      const res = await fetch(`${SUPA_URL}/auth/v1/otp`, {
-        method: "POST",
-        headers: { "apikey": SUPA_ANON, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          create_user: false,
-        }),
+      const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+        method:"POST",
+        headers:{"apikey":SUPA_ANON,"Content-Type":"application/json"},
+        body:JSON.stringify({email:email.trim().toLowerCase(),password}),
       });
-      if(res.ok) { setSent(true); }
-      else {
-        const body = await res.json().catch(()=>({}));
-        setErr(body.msg || "Email non trouvé. Vérifie que tu es bien abonné.");
+      const data = await res.json();
+      if(!res.ok) { setErr("Email ou mot de passe incorrect."); setLoading(false); return; }
+
+      const session = {
+        access_token:data.access_token, refresh_token:data.refresh_token,
+        expires_at:Math.floor(Date.now()/1000)+(data.expires_in||3600), user:data.user,
+      };
+
+      // Charger les billets de cet email
+      const abRes = await fetch(
+        `${SUPA_URL}/rest/v1/abonnes?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&order=prenom.asc`,
+        {headers:{"apikey":SUPA_ANON,"Authorization":`Bearer ${data.access_token}`}}
+      );
+      const abonnes = await abRes.json();
+
+      if(!abonnes?.length) { setErr("Aucun abonnement trouvé pour cet email."); setLoading(false); return; }
+
+      if(abonnes.length===1) {
+        localStorage.setItem("spacers_abonne", JSON.stringify(abonnes[0]));
+        localStorage.setItem("sb_session", JSON.stringify(session));
+        onLogin(abonnes[0]);
+      } else {
+        setSess(session);
+        setBillets(abonnes);
+        setStep("select");
       }
-    } catch { setErr("Erreur de connexion, réessaie."); }
+    } catch { setErr("Erreur de connexion. Réessaie."); }
     setLoading(false);
   }
 
-  return <div style={{minHeight:"100vh",background:B.night,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
-    <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.18,filter:"blur(2px)",zIndex:0}}/>
-    <div style={{position:"absolute",inset:0,background:`linear-gradient(to bottom, ${B.night}80 0%, ${B.night}95 60%, ${B.night} 100%)`,zIndex:0}}/>
-    <Stars/>
-    <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:380}}>
-      <div style={{textAlign:"center",marginBottom:40}}>
-        <SpacersLogo height={110} vertical/>
+  async function handleForgot() {
+    if(!email.trim()) { setErr("Entre ton email d'abonnement."); return; }
+    setLoading(true); setErr("");
+    try {
+      await fetch(`${SUPA_URL}/auth/v1/recover`, {
+        method:"POST",
+        headers:{"apikey":SUPA_ANON,"Content-Type":"application/json"},
+        body:JSON.stringify({email:email.trim().toLowerCase()}),
+      });
+      setMode("sent");
+    } catch { setErr("Erreur, réessaie."); }
+    setLoading(false);
+  }
+
+  function selectBillet(ab) {
+    localStorage.setItem("spacers_abonne", JSON.stringify(ab));
+    if(sess) localStorage.setItem("sb_session", JSON.stringify(sess));
+    onLogin(ab);
+  }
+
+  const inputStyle = {
+    width:"100%", padding:"13px 16px",
+    background:"rgba(255,255,255,0.10)", border:"1.5px solid rgba(255,255,255,0.15)",
+    borderRadius:12, color:B.white, fontFamily:"inherit", fontSize:14, outline:"none",
+    transition:"border-color .2s",
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${B.night} 0%,#041628 60%,#082436 100%)`,display:"flex",flexDirection:"column",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMG_CROWD})`,backgroundSize:"cover",backgroundPosition:"center top",opacity:.12,filter:"blur(3px)",zIndex:0}}/>
+      <Stars/>
+
+      {/* Header */}
+      <div style={{position:"relative",zIndex:1,padding:"40px 24px 20px",textAlign:"center",flexShrink:0}}>
+        <div style={{width:64,height:64,borderRadius:20,background:"rgba(255,255,255,.12)",border:"1.5px solid rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+          <SpacersLogo height={42} vertical/>
+        </div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:800,fontSize:22,color:B.white,lineHeight:1.2,marginBottom:5}}>
+          {step==="select" ? "Qui es-tu ?" : mode==="forgot" ? "Mot de passe oublié" : mode==="sent" ? "Email envoyé !" : "Spacers Bénévoles"}
+        </div>
+        <div style={{fontSize:12,color:"rgba(145,190,230,.8)",lineHeight:1.5}}>
+          {step==="select" ? "Plusieurs billets liés à cet email" : "Votre espace abonné · Saison 2026–2027"}
+        </div>
       </div>
 
-      {!sent ? <>
-        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:6,textAlign:"center"}}>Ton espace abonné</div>
-        <div style={{fontSize:12,color:B.muted,textAlign:"center",marginBottom:28,lineHeight:1.8}}>Entre ton email d'abonnement — tu recevras un lien de connexion instantané.</div>
-        <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendLink()}
-          placeholder="ton@email.fr" type="email" autoFocus
-          style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${email?B.day:B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:15,outline:"none",marginBottom:12,transition:"border-color .2s"}}/>
-        {err && <div style={{fontSize:11,color:B.red,marginBottom:10,textAlign:"center"}}>{err}</div>}
-        <button onClick={sendLink} disabled={!email.trim()||loading}
-          style={{width:"100%",padding:"15px",background:email.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:email.trim()?"pointer":"not-allowed",transition:"all .2s",letterSpacing:1}}>
-          {loading ? "Envoi en cours…" : "RECEVOIR MON LIEN ✦"}
-        </button>
-      </> : <>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:48,marginBottom:16}}>📧</div>
-          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,marginBottom:10}}>Lien envoyé !</div>
-          <div style={{fontSize:13,color:B.mutedL,lineHeight:1.8,marginBottom:6}}>Vérifie ta boîte mail</div>
-          <div style={{fontSize:14,color:B.day,fontWeight:700,marginBottom:24}}>{email}</div>
-          <div style={{fontSize:12,color:B.muted,lineHeight:1.8,padding:"14px 16px",background:B.nightLL,borderRadius:12,border:`1px solid ${B.nightB}`,marginBottom:20}}>
-            Clique sur le lien dans l'email → tu seras connecté automatiquement dans cette app.
+      {/* Body */}
+      <div style={{position:"relative",zIndex:1,flex:1,padding:"0 24px 12px",overflowY:"auto"}}>
+
+        {/* ── Formulaire login ── */}
+        {step==="form" && mode==="login" && <>
+          {err && <div style={{background:"rgba(153,53,86,.25)",border:"1px solid rgba(153,53,86,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#f4b8ce",marginBottom:14,lineHeight:1.5}}>{err}</div>}
+
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,.72)",marginBottom:5}}>Adresse email</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&document.getElementById("pwd-input").focus()}
+              placeholder="votre@email.fr" type="email" autoComplete="email"
+              style={{...inputStyle,borderColor:email?"rgba(145,190,230,.6)":"rgba(255,255,255,.15)"}}/>
           </div>
-          <button onClick={()=>{setSent(false);setEmail("");setErr("");}}
-            style={{background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
-            ← Utiliser un autre email
+
+          <div style={{marginBottom:6}}>
+            <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,.72)",marginBottom:5}}>Mot de passe</div>
+            <div style={{position:"relative"}}>
+              <input id="pwd-input" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                placeholder="••••••••" type={showPass?"text":"password"} autoComplete="current-password"
+                style={{...inputStyle,paddingRight:48,borderColor:password?"rgba(145,190,230,.6)":"rgba(255,255,255,.15)"}}/>
+              <button onClick={()=>setShowPass(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:16}}>
+                {showPass?"🙈":"👁️"}
+              </button>
+            </div>
+          </div>
+        </>}
+
+        {/* ── Mot de passe oublié ── */}
+        {step==="form" && mode==="forgot" && <>
+          {err && <div style={{background:"rgba(153,53,86,.25)",border:"1px solid rgba(153,53,86,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#f4b8ce",marginBottom:14}}>{err}</div>}
+          <div style={{fontSize:13,color:"rgba(145,190,230,.85)",lineHeight:1.7,marginBottom:16}}>
+            Entre ton email d'abonnement. Tu recevras un lien pour créer ou réinitialiser ton mot de passe.
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,.72)",marginBottom:5}}>Adresse email</div>
+            <input value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgot()}
+              placeholder="votre@email.fr" type="email" autoFocus
+              style={{...inputStyle,borderColor:email?"rgba(145,190,230,.6)":"rgba(255,255,255,.15)"}}/>
+          </div>
+        </>}
+
+        {/* ── Email envoyé ── */}
+        {mode==="sent" && (
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:48,marginBottom:16}}>📬</div>
+            <div style={{fontSize:13,color:"rgba(145,190,230,.85)",lineHeight:1.8,marginBottom:20}}>
+              Un email a été envoyé à<br/><strong style={{color:B.white}}>{email}</strong>
+            </div>
+            <div style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.12)",borderRadius:14,padding:"14px 16px",fontSize:11.5,color:"rgba(145,190,230,.78)",lineHeight:1.6,textAlign:"left",marginBottom:20}}>
+              👉 Clique sur le lien dans cet email pour créer ton mot de passe, puis reviens te connecter.<br/><br/>
+              Pas reçu ? Vérifie tes <strong>spams</strong>.
+            </div>
+            <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",color:"rgba(145,190,230,.7)",fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
+              ← Retour à la connexion
+            </button>
+          </div>
+        )}
+
+        {/* ── Sélecteur famille ── */}
+        {step==="select" && billets.map((b,i)=>(
+          <button key={i} onClick={()=>selectBillet(b)}
+            style={{width:"100%",padding:"14px 16px",background:"rgba(255,255,255,.08)",border:"1.5px solid rgba(255,255,255,.15)",borderRadius:12,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:12,marginBottom:10,textAlign:"left",transition:"border-color .2s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(145,190,230,.6)"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.15)"}>
+            <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${B.day},#5B9BD5)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.night,flexShrink:0}}>
+              {b.prenom?.[0]?.toUpperCase()}
+            </div>
+            <div>
+              <div style={{fontSize:14,fontWeight:700}}>{b.prenom} {b.nom}</div>
+              <div style={{fontSize:11,color:"rgba(145,190,230,.7)",marginTop:2}}>{b.formule} · {b.tribune||"Tribune"} {b.siege}</div>
+            </div>
+            <div style={{marginLeft:"auto",fontSize:18,color:"rgba(255,255,255,.3)"}}>→</div>
           </button>
+        ))}
+      </div>
+
+      {/* Footer */}
+      {mode!=="sent" && step==="form" && (
+        <div style={{position:"relative",zIndex:1,padding:"10px 24px 32px",flexShrink:0}}>
+          {mode==="login" && (
+            <button onClick={handleLogin} disabled={!email.trim()||!password.trim()||loading}
+              style={{width:"100%",padding:"15px",background:B.white,color:"#041628",border:"none",borderRadius:50,fontFamily:"inherit",fontSize:14,fontWeight:800,cursor:(email.trim()&&password.trim())?"pointer":"not-allowed",marginBottom:14,opacity:(email.trim()&&password.trim())?1:.4,transition:"opacity .2s"}}>
+              {loading?"Connexion…":"Se connecter →"}
+            </button>
+          )}
+          {mode==="forgot" && (
+            <button onClick={handleForgot} disabled={!email.trim()||loading}
+              style={{width:"100%",padding:"15px",background:B.white,color:"#041628",border:"none",borderRadius:50,fontFamily:"inherit",fontSize:14,fontWeight:800,cursor:email.trim()?"pointer":"not-allowed",marginBottom:14,opacity:email.trim()?1:.4}}>
+              {loading?"Envoi…":"Envoyer le lien →"}
+            </button>
+          )}
+          {err && mode==="login" && <div style={{textAlign:"center",fontSize:12,color:"#f4b8ce",marginBottom:10}}>{err}</div>}
+          <div style={{textAlign:"center"}}>
+            {mode==="login" && (
+              <button onClick={()=>{setMode("forgot");setErr("");}} style={{background:"none",border:"none",color:"rgba(145,190,230,.65)",fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
+                Première connexion · Mot de passe oublié ?
+              </button>
+            )}
+            {mode==="forgot" && (
+              <button onClick={()=>{setMode("login");setErr("");}} style={{background:"none",border:"none",color:"rgba(145,190,230,.65)",fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>
+                ← Retour à la connexion
+              </button>
+            )}
+          </div>
+          <div style={{fontSize:10,color:"rgba(145,190,230,.4)",textAlign:"center",marginTop:16,lineHeight:1.6}}>
+            TOAC-TUC Volley-Ball · Palais des Sports · Toulouse<br/>
+            Application réservée aux abonnés inscrits<br/>
+            <span style={{color:"rgba(145,190,230,.5)"}}>Confidentialité · RGPD</span>
+          </div>
         </div>
-      </>}
+      )}
     </div>
-  </div>;
+  );
 }
 
-/* ── RGPD SHEET ──────────────────────────────────────────── */
+
 function RgpdSheet({ onAccept }) {
   const [c,setC] = useState({analytics:false,marketing:false});
   const items = [
@@ -305,7 +449,7 @@ function ScreenAccueil({ abonne, matchs }) {
           <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:11,flex:1,textAlign:"center",color:B.white,lineHeight:1.4}}>{match.away}</div>
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>
-          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":",""[0]+"h"[0])}
+          {new Date(match.date_match).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} · {match.heure?.slice(0,5).replace(":", "h")}
         </div>
         <div style={{fontSize:11,color:B.muted,textAlign:"center"}}>📍 {match.venue}</div>
       </div>
@@ -555,111 +699,205 @@ function ScreenRecompenses({ abonne }) {
   </div>;
 }
 
-/* ── SCREEN: COMMUNAUTÉ ──────────────────────────────────── */
+/* ── SCREEN: COMMUNAUTÉ ──────────────────────────────────────── */
 function ScreenCommunaute({ abonne, token }) {
-  const [msgs,setMsgs]   = useState([]);
-  const [match,setMatch] = useState(null);
-  const [input,setInput] = useState("");
+  const [view,setView]       = useState("tabs");    // tabs | general | match
+  const [matchsFil,setMatchsFil] = useState([]);
+  const [filActif,setFilActif]   = useState(null);
+  const [msgs,setMsgs]       = useState([]);
+  const [epingles,setEpingles]   = useState([]);
+  const [input,setInput]     = useState("");
   const [loading,setLoading] = useState(true);
+  const [section,setSection] = useState("general"); // general | matchs
   const bottomRef = useRef(null);
 
-  // Charger le match actif et les messages
   useEffect(()=>{
-    async function load() {
+    async function init() {
       try {
-        // Dernier match planifié
-        const matchs = await api.get("/matchs", token, { statut:"eq.planifie", order:"date_match.asc", limit:1 });
-        const m = matchs[0];
-        if(!m) { setLoading(false); return; }
-        setMatch(m);
-
-        // Messages épinglés + messages communauté
-        const [epingles, messages] = await Promise.all([
-          api.get("/messages_epingles", token, { match_id:`eq.${m.id}`, actif:"eq.true", order:"ordre.asc" }),
-          api.get("/messages_communaute", token, { match_id:`eq.${m.id}`, statut:"eq.publie", order:"created_at.asc", limit:50 }),
-        ]);
-
-        const pinned = (epingles||[]).map(e=>({...e, official:true, name:"OFFICIEL", av:"✦"}));
-        setMsgs([...pinned, ...(messages||[]).map(m=>({...m, official:false}))]);
-      } catch(e) {
-        console.error(e);
-      }
+        const matchs = await api.get("/matchs", token, { fil_ouvert:"eq.true", order:"date_match.asc" });
+        setMatchsFil(matchs||[]);
+      } catch(e){console.error(e);}
       setLoading(false);
     }
-    load();
-    const interval = setInterval(load, 15000); // Refresh toutes les 15s
-    return ()=>clearInterval(interval);
+    init();
   },[token]);
+
+  async function openFil(type, match=null) {
+    setFilActif({ type, match });
+    setView(type==="general"?"general":"match");
+    setMsgs([]); setEpingles([]);
+    try {
+      if(type==="general") {
+        const m = await api.get("/messages_communaute", token, { match_id:"is.null", statut:"eq.publie", order:"created_at.asc", limit:"100" });
+        setMsgs(m||[]);
+      } else {
+        const [m,e] = await Promise.all([
+          api.get("/messages_communaute", token, { match_id:`eq.${match.id}`, statut:"eq.publie", order:"created_at.asc", limit:"100" }),
+          api.get("/messages_epingles", token, { match_id:`eq.${match.id}`, actif:"eq.true", order:"ordre.asc" }),
+        ]);
+        setMsgs(m||[]); setEpingles(e||[]);
+      }
+    } catch(e){console.error(e);}
+    const interval = setInterval(async()=>{
+      try {
+        const m = type==="general"
+          ? await api.get("/messages_communaute", token, { match_id:"is.null", statut:"eq.publie", order:"created_at.asc", limit:"100" })
+          : await api.get("/messages_communaute", token, { match_id:`eq.${match?.id}`, statut:"eq.publie", order:"created_at.asc", limit:"100" });
+        setMsgs(m||[]);
+      } catch(e){}
+    }, 15000);
+    return ()=>clearInterval(interval);
+  }
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
 
   async function send() {
-    if(!input.trim()||!match||!abonne) return;
-    const content = input.slice(0,280);
-    setInput("");
+    if(!input.trim()||!abonne) return;
+    const content = input.slice(0,280); setInput("");
     try {
-      await api.post("/messages_communaute", token, {
-        match_id:  match.id,
-        abonne_id: abonne.id,
-        contenu:   content,
-        statut:    "publie",
-      });
-      // Ajouter localement
-      setMsgs(m=>[...m,{id:Date.now(),contenu:content,official:false,prenom:abonne.prenom,created_at:new Date().toISOString()}]);
-    } catch(e) { console.error(e); }
+      const body = { abonne_id:abonne.id, contenu:content, statut:"publie" };
+      if(filActif?.type!=="general" && filActif?.match) body.match_id = filActif.match.id;
+      await api.post("/messages_communaute", token, body);
+      setMsgs(m=>[...m,{ id:Date.now(), contenu:content, prenom:abonne.prenom, created_at:new Date().toISOString() }]);
+    } catch(e){console.error(e);}
   }
 
   if(loading) return <div style={{padding:16}}><Spinner/></div>;
 
-  return <div style={{padding:16,display:"flex",flexDirection:"column",height:"calc(100vh - 130px)"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white}}>Communauté</div>
-      <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:`${B.green}18`,border:`1px solid ${B.green}40`,borderRadius:20}}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:B.green}}/>
-        <span style={{fontSize:10,color:B.green,fontWeight:700}}>En direct</span>
+  // ── VUE TABS ──────────────────────────────────────────────
+  if(view==="tabs") return (
+    <div style={{padding:16}}>
+      <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:18}}>Communauté</div>
+
+      {/* Onglets principaux */}
+      <div style={{display:"flex",gap:10,marginBottom:24}}>
+        {[{id:"general",icon:"💬",label:"Général"},{id:"matchs",icon:"🏐",label:"Matchs"}].map(t=>(
+          <button key={t.id} onClick={()=>setSection(t.id)}
+            style={{flex:1,padding:"14px 10px",borderRadius:14,border:`2px solid ${section===t.id?B.day:B.nightB}`,background:section===t.id?`${B.day}18`:B.nightLL,color:section===t.id?B.day:B.muted,fontFamily:"inherit",fontWeight:700,fontSize:13,cursor:"pointer",transition:"all .2s",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+            <span style={{fontSize:24}}>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
+
+      {/* Section Général */}
+      {section==="general" && (
+        <div>
+          <div style={{fontSize:10,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Fil permanent · Toute la saison</div>
+          <button onClick={()=>openFil("general")}
+            style={{width:"100%",padding:"16px",background:`linear-gradient(135deg,${B.day}18,${B.nightLL})`,border:`1.5px solid ${B.day}40`,borderRadius:14,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",transition:"border-color .2s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=B.day}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=`${B.day}40`}>
+            <div style={{width:44,height:44,borderRadius:12,background:`${B.day}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>💬</div>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>Fil Général · Saison 2026-27</div>
+              <div style={{fontSize:11,color:B.muted}}>Ouvert toute l'année · Échangez librement</div>
+            </div>
+            <div style={{marginLeft:"auto",color:B.day,fontSize:18}}>→</div>
+          </button>
+        </div>
+      )}
+
+      {/* Section Matchs */}
+      {section==="matchs" && (
+        <div>
+          <div style={{fontSize:10,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>Fils de match · Ouverts automatiquement J−15</div>
+          {matchsFil.length===0 && (
+            <div style={{textAlign:"center",padding:"32px 16px",color:B.muted,fontSize:13}}>
+              Aucun fil de match ouvert pour l'instant.<br/>
+              <span style={{fontSize:11}}>Le prochain s'ouvrira automatiquement J−15.</span>
+            </div>
+          )}
+          {matchsFil.map(m=>{
+            const isHome = m.home?.includes("Spacer");
+            const adversaire = isHome ? m.away : m.home;
+            const date = new Date(m.date_match).toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
+            return (
+              <button key={m.id} onClick={()=>openFil("match",m)}
+                style={{width:"100%",padding:"14px 16px",background:B.nightLL,border:`1.5px solid ${B.nightB}`,borderRadius:14,color:B.white,fontFamily:"inherit",cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",marginBottom:10,transition:"border-color .2s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=B.day}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=B.nightB}>
+                <div style={{width:44,height:44,borderRadius:12,background:`${B.day}18`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>🏐</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>vs {adversaire}</div>
+                  <div style={{fontSize:11,color:B.muted}}>{date} · {isHome?"Domicile":"Extérieur"}</div>
+                </div>
+                <div style={{marginLeft:"auto",color:B.muted,fontSize:18}}>→</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
+  );
 
-    {match && <div style={{background:B.nightLL,border:`1px solid ${B.day}30`,borderRadius:10,padding:"8px 12px",marginBottom:14}}>
-      <div style={{fontSize:9,color:B.day,fontWeight:700,letterSpacing:1.5}}>💬 FIL · {match.home?.toUpperCase()} VS {match.away?.toUpperCase()}</div>
-      <div style={{fontSize:9,color:B.muted,marginTop:2}}>280 car. max · Modéré · Ferme J+7</div>
-    </div>}
-
-    {!match && <div style={{padding:24,textAlign:"center",color:B.muted,fontSize:13}}>
-      Aucun fil actif pour le moment — le fil ouvre J−3 avant chaque match.
-    </div>}
-
-    <div style={{flex:1,overflowY:"auto",paddingRight:4}}>
-      {msgs.map((m,i)=>(
-        <div key={m.id||i} style={{marginBottom:12,display:"flex",gap:9,alignItems:"flex-start"}}>
-          <div style={{width:30,height:30,borderRadius:"50%",background:m.official?`${B.day}30`:B.nightB,border:`1.5px solid ${m.official?B.day:B.nightB}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:m.official?13:11,fontWeight:700,color:m.official?B.day:B.muted,flexShrink:0}}>
-            {m.official?"✦":(m.prenom||"?")[0]?.toUpperCase()}
+  // ── VUE THREAD (général ou match) ────────────────────────
+  return (
+    <div style={{padding:16,display:"flex",flexDirection:"column",height:"calc(100vh - 130px)"}}>
+      {/* Header thread */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <button onClick={()=>{setView("tabs");setMsgs([]);}} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:20,padding:"4px 8px 4px 0"}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.white}}>
+            {filActif?.type==="general" ? "💬 Général" : `🏐 vs ${filActif?.match?.away?.includes("Spacer")?filActif?.match?.home:filActif?.match?.away}`}
           </div>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-              <span style={{fontSize:11,fontWeight:700,color:m.official?B.day:B.white}}>{m.official?"OFFICIEL":m.prenom||"Abonné"}</span>
-              {m.official&&<span style={{fontSize:9,padding:"1px 6px",background:`${B.day}20`,color:B.day,borderRadius:4,fontWeight:700}}>CLUB</span>}
-              <span style={{fontSize:10,color:B.muted,marginLeft:"auto"}}>{m.created_at?new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""}</span>
-            </div>
-            <div style={{background:m.official?`${B.day}10`:B.nightLL,border:`1px solid ${m.official?`${B.day}30`:B.nightB}`,borderRadius:"0 10px 10px 10px",padding:"9px 12px",fontSize:13,color:B.white,lineHeight:1.6}}>
-              {m.contenu||m.content||m.txt}
-            </div>
-          </div>
+          <div style={{fontSize:10,color:B.muted,marginTop:1}}>280 car. max · Modéré par le club</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:`${B.green}18`,border:`1px solid ${B.green}40`,borderRadius:20}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:B.green}}/>
+          <span style={{fontSize:10,color:B.green,fontWeight:700}}>En direct</span>
+        </div>
+      </div>
+
+      {/* Messages épinglés */}
+      {epingles.map((e,i)=>(
+        <div key={i} style={{background:`${B.day}10`,border:`1px solid ${B.day}30`,borderRadius:10,padding:"8px 12px",marginBottom:8}}>
+          <div style={{fontSize:9,color:B.day,fontWeight:700,marginBottom:3}}>📌 OFFICIEL</div>
+          <div style={{fontSize:12,color:B.white,lineHeight:1.5}}>{e.contenu}</div>
         </div>
       ))}
-      <div ref={bottomRef}/>
-    </div>
 
-    {match && <div style={{display:"flex",gap:8,paddingTop:10,borderTop:`1px solid ${B.nightB}`}}>
-      <input value={input} onChange={e=>setInput(e.target.value.slice(0,280))} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-        placeholder="Ton message… (280 car. max)"
-        style={{flex:1,padding:"11px 14px",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none"}}/>
-      <button onClick={send} disabled={!input.trim()}
-        style={{padding:"11px 16px",background:input.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:input.trim()?"pointer":"not-allowed",transition:"all .2s"}}>✦</button>
-    </div>}
-    {input&&<div style={{fontSize:9,color:input.length>250?B.red:B.muted,textAlign:"right",marginTop:4}}>{input.length}/280</div>}
-  </div>;
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",paddingRight:4}}>
+        {msgs.length===0 && (
+          <div style={{textAlign:"center",padding:"32px 16px",color:B.muted,fontSize:13}}>
+            Aucun message pour l'instant.<br/>
+            <span style={{fontSize:12}}>Sois le premier à écrire ! 🏐</span>
+          </div>
+        )}
+        {msgs.map((m,i)=>(
+          <div key={m.id||i} style={{marginBottom:12,display:"flex",gap:9}}>
+            <div style={{width:30,height:30,borderRadius:"50%",background:B.nightB,border:`1.5px solid ${B.nightB}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:B.muted,flexShrink:0}}>
+              {(m.prenom||"?")[0]?.toUpperCase()}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                <span style={{fontSize:11,fontWeight:700,color:B.white}}>{m.prenom||"Abonné"}</span>
+                <span style={{fontSize:10,color:B.muted,marginLeft:"auto"}}>{m.created_at?new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""}</span>
+              </div>
+              <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:"0 10px 10px 10px",padding:"9px 12px",fontSize:13,color:B.white,lineHeight:1.6}}>
+                {m.contenu||m.txt}
+              </div>
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* Saisie */}
+      <div style={{display:"flex",gap:8,paddingTop:10,borderTop:`1px solid ${B.nightB}`}}>
+        <input value={input} onChange={e=>setInput(e.target.value.slice(0,280))}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
+          placeholder="Ton message…"
+          style={{flex:1,padding:"11px 14px",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none"}}/>
+        <button onClick={send} disabled={!input.trim()}
+          style={{padding:"11px 16px",background:input.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:input.trim()?"pointer":"not-allowed",transition:"all .2s"}}>✦</button>
+      </div>
+      {input&&<div style={{fontSize:9,color:input.length>250?B.red:B.muted,textAlign:"right",marginTop:4}}>{input.length}/280</div>}
+    </div>
+  );
 }
+
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
 function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
@@ -786,42 +1024,31 @@ export default function App() {
     ${Array.from({length:4},(_,i)=>`@keyframes tw${i}{0%,100%{opacity:.2}50%{opacity:.7}}`).join("")}
   `;
 
-  // Charger la session au démarrage (+ détecter token dans URL hash)
+  // Charger la session au démarrage
   useEffect(()=>{
     async function init() {
-      // Détecter le token Supabase dans l'URL hash (magic link redirect)
-      const hash = window.location.hash;
-      if(hash && hash.includes("access_token=")) {
-        const params = new URLSearchParams(hash.substring(1));
-        const access_token  = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-        const expires_in    = parseInt(params.get("expires_in") || "3600");
-        if(access_token) {
-          // Récupérer les infos user depuis le token
-          const userRes = await fetch(`${SUPA_URL}/auth/v1/user`, {
-            headers: { "apikey": SUPA_ANON, "Authorization": `Bearer ${access_token}` }
-          });
-          const user = userRes.ok ? await userRes.json() : null;
-          const sess = {
-            access_token,
-            refresh_token,
-            expires_at: Math.floor(Date.now()/1000) + expires_in,
-            user,
-          };
-          localStorage.setItem("sb_session", JSON.stringify(sess));
-          // Nettoyer l'URL
-          window.history.replaceState(null, "", window.location.pathname);
-          setSession(sess);
-          await loadUserData(sess);
-          setLoading(false);
-          return;
+      const stored   = localStorage.getItem("spacers_abonne");
+      const storedSess = localStorage.getItem("sb_session");
+      if(stored) {
+        try {
+          const ab   = JSON.parse(stored);
+          const sess = storedSess ? JSON.parse(storedSess) : null;
+          // Vérifier expiration session
+          if(sess && sess.expires_at * 1000 < Date.now()) {
+            localStorage.removeItem("spacers_abonne");
+            localStorage.removeItem("sb_session");
+            setLoading(false); return;
+          }
+          setAbonne(ab);
+          setRgpd({ essential:true, analytics:ab.rgpd_analytics||false, marketing:ab.rgpd_marketing||false });
+          const token = sess?.access_token || SUPA_ANON;
+          const matchsData = await api.get("/matchs", token, { order:"date_match.asc", limit:10 });
+          setMatchs(matchsData||[]);
+          if(!ab.rgpd_analytics && !ab.rgpd_marketing) setShowRgpd(true);
+        } catch(e) {
+          localStorage.removeItem("spacers_abonne");
+          localStorage.removeItem("sb_session");
         }
-      }
-      // Session classique
-      const sess = await api.getSession();
-      if(sess) {
-        setSession(sess);
-        await loadUserData(sess);
       }
       setLoading(false);
     }
@@ -851,15 +1078,20 @@ export default function App() {
     }
   }
 
-  function handleLogin(sess) {
-    setSession(sess);
+  async function handleLogin(abonneData) {
+    setAbonne(abonneData);
+    setRgpd({ essential:true, analytics:abonneData.rgpd_analytics||false, marketing:abonneData.rgpd_marketing||false });
     setLoading(true);
-    loadUserData(sess).then(()=>setLoading(false));
+    try {
+      const matchsData = await api.get("/matchs", SUPA_ANON, { order:"date_match.asc", limit:10 });
+      setMatchs(matchsData||[]);
+    } catch(e) { console.error(e); }
+    if(!abonneData.rgpd_analytics && !abonneData.rgpd_marketing) setShowRgpd(true);
+    setLoading(false);
   }
 
   function handleLogout() {
-    localStorage.removeItem("sb_session");
-    setSession(null);
+    localStorage.removeItem("spacers_abonne");
     setAbonne(null);
     setTab("home");
   }
@@ -873,14 +1105,14 @@ export default function App() {
     </div>
   );
 
-  if(!session) return (
+  if(!abonne) return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
       <style>{CSS}</style>
       <LoginScreen onLogin={handleLogin}/>
     </div>
   );
 
-  const token = session.access_token;
+  const token = SUPA_ANON;
 
   return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white,position:"relative"}}>
