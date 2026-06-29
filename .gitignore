@@ -24,3 +24,4 @@ dist-ssr
 *.sw?
 create-auth-accounts.cjs
 link-auth-abonnes.sql
+tickets.json
