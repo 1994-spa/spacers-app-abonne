@@ -518,7 +518,6 @@ function ScreenBillet({ abonne, matchs }) {
   },[abonne?.id]);
 
   return <div style={{padding:16}}>
-    <div style={{marginBottom:16}}><SpacersLogo height={26}/></div>
     <div style={{display:"flex",gap:6,marginBottom:18}}>
       {[["entree","🏟️ Entrée"],["buvette","🍺 Buvette"],["boutique","🛍️ Boutique"]].map(([id,l])=>(
         <button key={id} onClick={()=>setMode(id)} style={{flex:1,padding:"9px 4px",borderRadius:10,border:`1.5px solid ${mode===id?B.day:B.nightB}`,background:mode===id?`${B.day}18`:B.nightLL,color:mode===id?B.day:B.muted,fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer",transition:"all .2s"}}>{l}</button>
