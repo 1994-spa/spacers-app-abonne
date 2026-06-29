@@ -392,6 +392,15 @@ function ScreenAccueil({ abonne, matchs }) {
   const ambass = getAmbass(abonne?.nb_filleuls || 0);
   const match  = matchs.find(m => m.statut === "planifie");
 
+  const [showAccess,setShowAccess] = useState(false);
+  const ouverture = (() => {
+    const h = match?.heure?.slice(0,5);
+    if (!h) return "1h avant le match";
+    const [hh,mm] = h.split(":").map(Number);
+    const d = new Date(); d.setHours(hh, mm||0, 0, 0); d.setHours(d.getHours()-1);
+    return `${String(d.getHours()).padStart(2,"0")}h${String(d.getMinutes()).padStart(2,"0")} · 1h avant le match`;
+  })();
+
   const daysUntil = match ? Math.ceil((new Date(match.date_match) - new Date()) / 86400000) : null;
 
   return <div style={{padding:"16px 16px 8px"}}>
@@ -447,8 +456,8 @@ function ScreenAccueil({ abonne, matchs }) {
 
     {/* Infos pratiques */}
     <div style={{fontSize:10,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Ce soir</div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:18}}>
-      {[{icon:"⏰",t:"Ouverture",i:"18h30 · 90 min avant"},{icon:"🅿️",t:"Parking",i:"Compans · −50% QR"},{icon:"👶",t:"Espace famille",i:"Animations Niveau −1"},{icon:"🚌",t:"TCL direct",i:"Arrêt Palais des Sports"}].map((it,i)=>(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:9}}>
+      {[{icon:"⏰",t:"Ouverture des portes",i:ouverture},{icon:"🅿️",t:"Parking",i:"Q-Park Compans · forfait 5€"}].map((it,i)=>(
         <div key={i} style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 11px"}}>
           <div style={{fontSize:18,marginBottom:5}}>{it.icon}</div>
           <div style={{fontSize:12,fontWeight:700,color:B.white,marginBottom:1}}>{it.t}</div>
@@ -456,6 +465,41 @@ function ScreenAccueil({ abonne, matchs }) {
         </div>
       ))}
     </div>
+
+    {/* Venir au Palais (dépliable) */}
+    <button onClick={()=>setShowAccess(v=>!v)} style={{width:"100%",textAlign:"left",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 14px",marginBottom:showAccess?9:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>🚇</span>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:B.white}}>Venir au Palais</div>
+          <div style={{fontSize:11,color:B.muted}}>Métro, bus, parking & vélo</div>
+        </div>
+      </div>
+      <span style={{fontSize:12,color:B.day,transform:showAccess?"rotate(180deg)":"none",transition:"transform .2s"}}>▾</span>
+    </button>
+
+    {showAccess && (
+      <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"14px 16px",marginBottom:18,fontSize:12,color:B.muted,lineHeight:1.6}}>
+        <div style={{fontWeight:700,color:B.white,marginBottom:2}}>Palais des Sports André-Brouat</div>
+        <div style={{marginBottom:10}}>3, rue Pierre Laplace — 31000 Toulouse (quartier Compans-Caffarelli)</div>
+        <div style={{color:B.day,fontWeight:700,marginBottom:12}}>Un soir de match, privilégie le métro : c'est le plus simple et ça évite la recherche de stationnement.</div>
+
+        <div style={{fontWeight:700,color:B.white,marginBottom:2}}>🚇 Métro</div>
+        <div style={{marginBottom:10}}>Ligne B, station <b>Compans-Caffarelli</b> (~5 min à pied) ou <b>Canal du Midi</b> (devant le Conseil départemental). Ligne accessible PMR.</div>
+
+        <div style={{fontWeight:700,color:B.white,marginBottom:2}}>🚌 Bus</div>
+        <div style={{marginBottom:10}}>Lignes L1, 16, 45, 70, 71 — arrêt <b>Compans Caffarelli</b>. Pense à vérifier tes horaires de retour sur Tisséo.</div>
+
+        <div style={{fontWeight:700,color:B.white,marginBottom:2}}>🚗 Voiture & parking</div>
+        <div style={{marginBottom:6}}>Sortie rocade <b>Ponts Jumeaux</b>, direction centre-ville. Parking <b>Q-Park Compans Caffarelli</b> (3 min à pied). Forfait Sport : <b>5 €</b> de 18h30 à 23h30 les soirs de match.</div>
+        <a href="https://www.q-park.fr/fr-fr/events/palais-des-sports-toulouse/" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",color:B.day,fontWeight:700,marginBottom:12,textDecoration:"none"}}>→ Réserver mon parking</a>
+
+        <div style={{fontWeight:700,color:B.white,marginBottom:2}}>🚲 Vélo</div>
+        <div style={{marginBottom:12}}>Stations VélÔToulouse : n°20 (Métro Canal du Midi) et n°12 (Métro Compans).</div>
+
+        <a href="https://www.tisseo.fr/calculateur" target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",background:B.day,color:B.night,fontWeight:800,padding:"10px",borderRadius:10,textDecoration:"none"}}>Calculer mon itinéraire (Tisséo)</a>
+      </div>
+    )}
 
     {/* Formule abonnement */}
     <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 14px",marginBottom:12}}>
@@ -1245,7 +1289,7 @@ export default function App() {
 
       {/* Top bar */}
       <div style={{position:"sticky",top:0,zIndex:40,background:`${B.night}f0`,borderBottom:`1px solid ${B.nightB}`,padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(12px)"}}>
-        <SpacersLogo height={26}/>
+        <SpacersLogo height={34}/>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:13,color:B.day}}>
             {abonne?.points_total||0} pts
