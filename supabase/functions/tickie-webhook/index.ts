@@ -28,6 +28,9 @@ const APP_URL       = Deno.env.get("APP_URL") || "https://spacers-app-abonne.spa
 const TICKIE_BASE = "https://vivenu.com/api";
 const EVENT_ABO   = "69fc9d2b69a5578199f9d5e9"; // événement abonnement 2026-27
 const SAISON      = "2026-27";
+// Interrupteur d'invitations : tant que != "true", la sync NE crée PAS de comptes
+// ni n'envoie d'emails (sync des données seule). À passer à "true" le jour du lancement.
+const INVITES_ENABLED = (Deno.env.get("INVITES_ENABLED") || "").toLowerCase() === "true";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -109,29 +112,33 @@ Deno.serve(async (req) => {
       if (upErr) console.log("upsert abonnes error:", upErr.message);
     }
 
-    // 6) Compte de connexion : n'inviter que les emails SANS compte auth existant
-    //    (sûr pour le webhook comme pour le cron : aucune ré-invitation).
-    const existing = new Set<string>();
-    try {
-      for (let page = 1; page <= 5; page++) {
-        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-        if (error || !data?.users?.length) break;
-        data.users.forEach((u: any) => { if (u.email) existing.add(u.email.toLowerCase()); });
-        if (data.users.length < 1000) break;
-      }
-    } catch (e) { console.log("listUsers error:", String(e)); }
-
-    const emails = [...new Set(rows.map((r) => r.email))].filter((e) => e && !existing.has(e));
+    // 6) Compte de connexion : invitations uniquement si INVITES_ENABLED = true.
+    //    On n'invite que les emails SANS compte auth existant (aucune ré-invitation).
     let invited = 0;
-    for (const email of emails) {
+    if (INVITES_ENABLED) {
+      const existing = new Set<string>();
       try {
-        const { error: invErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: `${APP_URL}/` });
-        if (invErr) { if (!/already|registered|exist/i.test(invErr.message)) console.log("invite error", email, invErr.message); }
-        else invited++;
-      } catch (e) { console.log("invite exception", email, String(e)); }
+        for (let page = 1; page <= 5; page++) {
+          const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+          if (error || !data?.users?.length) break;
+          data.users.forEach((u: any) => { if (u.email) existing.add(u.email.toLowerCase()); });
+          if (data.users.length < 1000) break;
+        }
+      } catch (e) { console.log("listUsers error:", String(e)); }
+
+      const emails = [...new Set(rows.map((r) => r.email))].filter((e) => e && !existing.has(e));
+      for (const email of emails) {
+        try {
+          const { error: invErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: `${APP_URL}/` });
+          if (invErr) { if (!/already|registered|exist/i.test(invErr.message)) console.log("invite error", email, invErr.message); }
+          else invited++;
+        } catch (e) { console.log("invite exception", email, String(e)); }
+      }
+    } else {
+      console.log("Invitations desactivees (INVITES_ENABLED != true) - sync des donnees seule.");
     }
 
-    return json({ ok: true, processed: rows.length, invited });
+    return json({ ok: true, processed: rows.length, invited, invites_enabled: INVITES_ENABLED });
   } catch (err) {
     console.log("webhook error:", String(err));
     return json({ error: String(err) }, 500);
