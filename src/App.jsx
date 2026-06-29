@@ -1025,6 +1025,97 @@ function Nav({ tab, setTab }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   FLUX INVITATION / MOT DE PASSE OUBLIÉ
+   (le lien email renvoie ici avec un jeton dans le hash d'URL)
+══════════════════════════════════════════════════════════════ */
+function parseAuthHash() {
+  if (typeof window === "undefined") return null;
+  const raw = window.location.hash?.startsWith("#") ? window.location.hash.slice(1) : "";
+  if (!raw) return null;
+  const p = new URLSearchParams(raw);
+  const err = p.get("error_description") || p.get("error");
+  const at = p.get("access_token");
+  const type = p.get("type"); // invite | recovery | signup
+  if (at && (type === "invite" || type === "recovery" || type === "signup")) {
+    return { access_token: at, refresh_token: p.get("refresh_token") || null, type, expires_in: parseInt(p.get("expires_in")||"3600",10) };
+  }
+  if (err) return { error: err };
+  return null;
+}
+
+function SetPasswordScreen({ flow, onLogin }) {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const titre = flow.type === "recovery" ? "Nouveau mot de passe" : "Bienvenue chez les Spacer's !";
+  const sous   = flow.type === "recovery"
+    ? "Choisis un nouveau mot de passe pour ton compte."
+    : "Définis ton mot de passe pour accéder à ton espace abonné.";
+
+  async function submit() {
+    if (pw.length < 8) { setErr("8 caractères minimum."); return; }
+    if (pw !== pw2)    { setErr("Les deux mots de passe ne correspondent pas."); return; }
+    setLoading(true); setErr("");
+    try {
+      // 1) Définir le mot de passe avec le jeton du lien email
+      const res = await fetch(`${SUPA_URL}/auth/v1/user`, {
+        method: "PUT",
+        headers: { "apikey": SUPA_ANON, "Authorization": `Bearer ${flow.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const user = await res.json();
+      if (!res.ok) { setErr(user?.msg || user?.error_description || "Lien expiré. Redemande un email."); setLoading(false); return; }
+
+      const email = (user?.email || "").toLowerCase();
+      const session = {
+        access_token: flow.access_token, refresh_token: flow.refresh_token,
+        expires_at: Math.floor(Date.now()/1000) + (flow.expires_in||3600), user,
+      };
+
+      // 2) Charger l'abonné lié à cet email
+      const abRes = await fetch(
+        `${SUPA_URL}/rest/v1/abonnes?email=eq.${encodeURIComponent(email)}&order=prenom.asc`,
+        { headers: { "apikey": SUPA_ANON, "Authorization": `Bearer ${flow.access_token}` } }
+      );
+      const abonnes = await abRes.json();
+
+      // Nettoyer le hash pour qu'un refresh ne relance pas le flux
+      try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (_) {}
+
+      if (!abonnes?.length) {
+        setErr("Mot de passe enregistré, mais aucun abonnement n'est lié à cet email. Contacte le club.");
+        setLoading(false); return;
+      }
+      localStorage.setItem("sb_session", JSON.stringify(session));
+      localStorage.setItem("spacers_abonne", JSON.stringify(abonnes[0]));
+      onLogin(abonnes[0]);
+    } catch (_) {
+      setErr("Erreur, réessaie."); setLoading(false);
+    }
+  }
+
+  const inputStyle = {
+    width:"100%", padding:"13px 16px", background:"rgba(255,255,255,0.10)",
+    border:"1.5px solid rgba(255,255,255,0.15)", borderRadius:12, color:B.white,
+    fontFamily:"inherit", fontSize:14, outline:"none", marginBottom:12,
+  };
+
+  return <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"24px 22px",position:"relative",zIndex:1}}>
+    <div style={{display:"flex",justifyContent:"center",marginBottom:22}}><SpacersLogo height={64} vertical/></div>
+    <div style={{fontSize:20,fontWeight:800,textAlign:"center",marginBottom:6}}>{titre}</div>
+    <div style={{fontSize:13,color:B.muted,textAlign:"center",marginBottom:22,lineHeight:1.5}}>{sous}</div>
+    <input type="password" placeholder="Mot de passe (8 caractères min.)" value={pw} onChange={e=>setPw(e.target.value)} style={inputStyle} autoFocus/>
+    <input type="password" placeholder="Confirme le mot de passe" value={pw2} onChange={e=>setPw2(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} style={inputStyle}/>
+    {err && <div style={{fontSize:12,color:"#ff9b9b",textAlign:"center",marginBottom:12}}>{err}</div>}
+    <button onClick={submit} disabled={loading} style={{width:"100%",padding:"14px",background:loading?B.nightB:B.day,color:B.night,border:"none",borderRadius:12,fontWeight:800,fontSize:15,cursor:loading?"default":"pointer"}}>
+      {loading ? "Enregistrement…" : "Valider mon mot de passe"}
+    </button>
+  </div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
    APP ROOT
 ══════════════════════════════════════════════════════════════ */
 export default function App() {
@@ -1036,6 +1127,7 @@ export default function App() {
   const [rgpd,setRgpd]       = useState({essential:true,analytics:false,marketing:false});
   const [showRgpd,setShowRgpd] = useState(false);
   const [toast,setToast]     = useState(null);
+  const [flow,setFlow]       = useState(()=>parseAuthHash());
 
   const showToast = (msg,type="info") => { setToast({msg,type}); };
 
@@ -1126,6 +1218,14 @@ export default function App() {
       <Stars/>
       <SpacersLogo height={80} vertical/>
       <Spinner/>
+    </div>
+  );
+
+  if(flow && !flow.error && !abonne) return (
+    <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
+      <style>{CSS}</style>
+      <Stars/>
+      <SetPasswordScreen flow={flow} onLogin={(ab)=>{ setFlow(null); handleLogin(ab); }}/>
     </div>
   );
 
