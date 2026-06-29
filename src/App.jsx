@@ -16,6 +16,7 @@ const SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 const SOCIAL_URL  = "https://goaviqaevdkvptejrreo.supabase.co";
 const SOCIAL_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvYXZpcWFldmRrdnB0ZWpycmVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNzgxMjMsImV4cCI6MjA5NDg1NDEyM30.I_KY72kLksYb4iRk9Y_Q3E_gcaK6xtm1zjb5qGaqpc4";
 const INSTA_URL   = "https://www.instagram.com/spacerstoulouse";
+const CLASSEMENT_URL = "https://www.flashscore.fr/volleyball/france/ligue-a/#/WzjcpSNF/classements/global/";
 const socialImg = (p) => {
   const b = p.image_b64;
   if (b) return b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`;
@@ -564,18 +565,18 @@ function ScreenAccueil({ abonne, matchs }) {
       </div>
     </div>
 
-    {/* Services */}
-    <div style={{padding:"10px 12px",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12}}>
-      <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:7}}>Services connectés</div>
-      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-        {[["🏐","Tickie","actif"],["🍺","Buvette","actif"],["🛍️","Boutique","actif"],["📊","Ligue A","actif"]].map(([ico,l,s])=>(
-          <div key={l} style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",borderRadius:20,background:`${B.green}15`,border:`1px solid ${B.green}40`}}>
-            <span style={{fontSize:10}}>{ico}</span>
-            <span style={{fontSize:9,fontWeight:700,color:B.green}}>{l}</span>
-          </div>
-        ))}
+    {/* Classement Ligue A */}
+    <a href={CLASSEMENT_URL} target="_blank" rel="noopener noreferrer"
+       style={{textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"space-between",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 14px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>📊</span>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:B.white}}>Classement Ligue A</div>
+          <div style={{fontSize:11,color:B.muted}}>Voir le classement complet en direct</div>
+        </div>
       </div>
-    </div>
+      <span style={{fontSize:14,color:B.day,fontWeight:700}}>↗</span>
+    </a>
   </div>;
 }
 
