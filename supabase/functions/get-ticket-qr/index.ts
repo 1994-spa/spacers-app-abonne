@@ -98,15 +98,16 @@ Deno.serve(async (req) => {
       await admin.from("abonnes").update({ tickie_barcode: barcode }).eq("id", abonne.id);
     }
 
-    const seat = ticket?.seatingInfo
-      ? `${ticket.seatingInfo.sectionName ?? ""} ${ticket.seatingInfo.rowName ?? ""}${ticket.seatingInfo.seatName ? "-" + ticket.seatingInfo.seatName : ""}`.trim()
-      : null;
+    const si = ticket?.seatingInfo ?? null;
 
     return json({
       barcode,
       ticket_name: ticket?.ticketName ?? ticket?.name ?? null,
       category:    ticket?.categoryName ?? null,
-      seat:        seat || null,
+      section:     si?.sectionName ?? ticket?.categoryName ?? null,
+      row:         si?.rowName ?? null,
+      seat:        si?.seatName ?? null,
+      gate:        si?.gate ?? null,
       status:      ticket?.status ?? null,
       source:      ticket ? "tickie" : "cache",
     });
