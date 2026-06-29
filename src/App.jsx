@@ -700,7 +700,7 @@ function ScreenRecompenses({ abonne }) {
 }
 
 /* ── SCREEN: COMMUNAUTÉ ──────────────────────────────────────── */
-function ScreenCommunaute({ abonne, token }) {
+function ScreenCommunaute({ abonne, token, matchs }) {
   const [view,setView]       = useState("tabs");    // tabs | general | match
   const [matchsFil,setMatchsFil] = useState([]);
   const [filActif,setFilActif]   = useState(null);
@@ -712,25 +712,19 @@ function ScreenCommunaute({ abonne, token }) {
   const bottomRef = useRef(null);
 
   useEffect(()=>{
-    async function init() {
-      try {
-        // On récupère tous les matchs, puis on calcule l'ouverture des fils côté client (J−15, sans cron).
-        const matchs = await api.get("/matchs", token, { order:"date_match.asc" });
-        const now   = Date.now();
-        const J15   = 15 * 86400000;  // 15 jours en ms
-        const GRACE = 7  * 86400000;  // on garde le fil ouvert jusqu'à 7 j après le match (J+7)
-        const ouverts = (matchs||[]).filter(m=>{
-          if(m.fil_ouvert===true) return true;          // override manuel (staff)
-          if(!m.date_match) return false;
-          const diff = new Date(m.date_match).getTime() - now;  // >0 = à venir, <0 = passé
-          return diff <= J15 && diff >= -GRACE;          // ouvert de J−15 jusqu'à J+7
-        });
-        setMatchsFil(ouverts);
-      } catch(e){console.error(e);}
-      setLoading(false);
-    }
-    init();
-  },[token]);
+    // On réutilise le tableau matchs déjà chargé par l'app (fiable), et on calcule l'ouverture des fils côté client (J−15 → J+7, sans cron ni requête séparée).
+    const now   = Date.now();
+    const J15   = 15 * 86400000;  // 15 jours en ms
+    const GRACE = 7  * 86400000;  // on garde le fil ouvert jusqu'à 7 j après le match (J+7)
+    const ouverts = (matchs||[]).filter(m=>{
+      if(m.fil_ouvert===true) return true;          // override manuel (staff)
+      if(!m.date_match) return false;
+      const diff = new Date(m.date_match).getTime() - now;  // >0 = à venir, <0 = passé
+      return diff <= J15 && diff >= -GRACE;          // ouvert de J−15 jusqu'à J+7
+    });
+    setMatchsFil(ouverts);
+    setLoading(false);
+  },[matchs]);
 
   async function openFil(type, match=null) {
     setFilActif({ type, match });
@@ -1137,7 +1131,7 @@ export default function App() {
         {tab==="matchs"    && <ScreenMatchs matchs={matchs}/>}
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
         {tab==="rewards"   && <ScreenRecompenses abonne={abonne}/>}
-        {tab==="community" && <ScreenCommunaute abonne={abonne} token={token}/>}
+        {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
         {tab==="profil"    && <ScreenProfil abonne={abonne} token={token} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout}/>}
       </div>
 
