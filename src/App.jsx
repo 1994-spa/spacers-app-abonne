@@ -519,6 +519,10 @@ function ScreenAccueil({ abonne, matchs }) {
         <div style={{marginBottom:12}}>Stations VélÔToulouse : n°20 (Métro Canal du Midi) et n°12 (Métro Compans).</div>
 
         <a href="https://www.tisseo.fr/calculateur" target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",background:B.day,color:B.night,fontWeight:800,padding:"10px",borderRadius:10,textDecoration:"none"}}>Calculer mon itinéraire (Tisséo)</a>
+
+        <button onClick={()=>setShowAccess(false)} style={{width:"100%",background:"transparent",border:"none",cursor:"pointer",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6,color:B.muted,fontSize:11,fontWeight:700}}>
+          Réduire <span style={{fontSize:12}}>▴</span>
+        </button>
       </div>
     )}
 
