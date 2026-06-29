@@ -548,6 +548,7 @@ function ScreenBillet({ abonne, matchs }) {
            </div>
            <div style={{fontFamily:"monospace",fontSize:11,color:B.white,letterSpacing:2,textAlign:"center",marginBottom:4}}>{billet.barcode}</div>
            {billet.info?.ticket_name && <div style={{fontSize:10,color:B.muted,marginBottom:2}}>{billet.info.ticket_name}{billet.info.category?` · ${billet.info.category}`:""}</div>}
+           {billet.info?.seat && <div style={{fontSize:10,color:B.muted,marginBottom:2}}>📍 {billet.info.seat}</div>}
            <div style={{fontSize:11,color:B.muted}}>Présente ce QR à l'entrée du Palais</div>
          </> : <div style={{textAlign:"center",padding:"10px 0 4px"}}>
            <div style={{fontSize:28,marginBottom:8}}>🎫</div>
