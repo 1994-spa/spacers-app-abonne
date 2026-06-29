@@ -228,7 +228,7 @@ function LoginScreen({ onLogin }) {
           <SpacersLogo height={42} vertical/>
         </div>
         <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:800,fontSize:22,color:B.white,lineHeight:1.2,marginBottom:5}}>
-          {step==="select" ? "Qui es-tu ?" : mode==="forgot" ? "Mot de passe oublié" : mode==="sent" ? "Email envoyé !" : "Spacers Bénévoles"}
+          {step==="select" ? "Qui es-tu ?" : mode==="forgot" ? "Mot de passe oublié" : mode==="sent" ? "Email envoyé !" : "Spacer's Toulouse"}
         </div>
         <div style={{fontSize:12,color:"rgba(145,190,230,.8)",lineHeight:1.5}}>
           {step==="select" ? "Plusieurs billets liés à cet email" : "Votre espace abonné · Saison 2026–2027"}
