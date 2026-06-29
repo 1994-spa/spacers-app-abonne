@@ -74,19 +74,12 @@ Deno.serve(async (req) => {
     const all: any[] = tRes.ok ? ((await tRes.json()).rows ?? []) : [];
     if (!tRes.ok) console.log("Tickie /tickets non OK:", tRes.status);
 
-    // 4) Cibler les billets concernés par ce webhook
-    let tickets = all.filter((t) =>
-      (barcodes.size && barcodes.has(t.barcode)) ||
-      (txIds.size && (txIds.has(t.transactionId) || txIds.has(t._id)))
-    );
-    // Filet de sécurité : si rien n'a pu être ciblé, prendre les billets très récents (10 min)
-    if (tickets.length === 0 && all.length) {
-      const cutoff = Date.now() - 10 * 60 * 1000;
-      tickets = all.filter((t) => {
-        const ts = new Date(t.createdAt || t.updatedAt || t.created || 0).getTime();
-        return ts && ts >= cutoff;
-      });
-    }
+    // 4) Cibler les billets : webhook → le(s) billet(s) de l'achat ;
+    //    appel sans identifiant (cron/sync) → tout l'événement abonnement (réconciliation).
+    const targeted = barcodes.size > 0 || txIds.size > 0;
+    const tickets = targeted
+      ? all.filter((t) => barcodes.has(t.barcode) || txIds.has(t.transactionId) || txIds.has(t._id))
+      : all;
 
     if (tickets.length === 0) {
       return json({ ok: true, processed: 0, invited: 0, note: "aucun billet ciblé (abonnement)" });
@@ -116,18 +109,25 @@ Deno.serve(async (req) => {
       if (upErr) console.log("upsert abonnes error:", upErr.message);
     }
 
-    // 6) Compte de connexion : inviter chaque email nouveau (1 invitation par email)
-    const emails = [...new Set(rows.map((r) => r.email))].filter(Boolean);
+    // 6) Compte de connexion : n'inviter que les emails SANS compte auth existant
+    //    (sûr pour le webhook comme pour le cron : aucune ré-invitation).
+    const existing = new Set<string>();
+    try {
+      for (let page = 1; page <= 5; page++) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (error || !data?.users?.length) break;
+        data.users.forEach((u: any) => { if (u.email) existing.add(u.email.toLowerCase()); });
+        if (data.users.length < 1000) break;
+      }
+    } catch (e) { console.log("listUsers error:", String(e)); }
+
+    const emails = [...new Set(rows.map((r) => r.email))].filter((e) => e && !existing.has(e));
     let invited = 0;
     for (const email of emails) {
       try {
         const { error: invErr } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: `${APP_URL}/` });
-        if (invErr) {
-          // Déjà inscrit → normal, on ignore. Sinon on logge.
-          if (!/already|registered|exist/i.test(invErr.message)) console.log("invite error", email, invErr.message);
-        } else {
-          invited++;
-        }
+        if (invErr) { if (!/already|registered|exist/i.test(invErr.message)) console.log("invite error", email, invErr.message); }
+        else invited++;
       } catch (e) { console.log("invite exception", email, String(e)); }
     }
 
