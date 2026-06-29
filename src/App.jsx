@@ -574,10 +574,13 @@ function ScreenBillet({ abonne, matchs }) {
         <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.green}}>Happy Hour · −20% jusqu'à 19h</div>
       </div>
       <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:16}}>
-        <div style={{fontSize:11,color:B.muted,marginBottom:10}}>QR Buvette · présente à la caisse</div>
-        <div style={{display:"flex",justifyContent:"center",background:B.white,borderRadius:10,padding:10}}>
-          <QRCode value={`BUV-${abonne?.id||"demo"}`} size={130}/>
-        </div>
+        <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Même QR que ton billet · présente-le à la caisse</div>
+        {billet.barcode
+          ? <><div style={{display:"flex",justifyContent:"center",background:B.white,borderRadius:10,padding:10}}>
+              <QRCode value={billet.barcode} size={130}/>
+            </div>
+            <div style={{fontFamily:"monospace",fontSize:10,color:B.muted,letterSpacing:2,textAlign:"center",marginTop:8}}>{billet.barcode}</div></>
+          : <div style={{fontSize:11,color:B.muted,textAlign:"center",padding:"8px 0"}}>Ton billet est nécessaire pour cumuler des points.</div>}
       </div>
     </div>}
 
@@ -587,10 +590,13 @@ function ScreenBillet({ abonne, matchs }) {
         <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.dayL}}>−15% sur tout le merch abonné</div>
       </div>
       <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:16}}>
-        <div style={{fontSize:11,color:B.muted,marginBottom:10}}>QR Boutique · présente à la caisse</div>
-        <div style={{display:"flex",justifyContent:"center",background:B.white,borderRadius:10,padding:10}}>
-          <QRCode value={`BOUT-${abonne?.id||"demo"}`} size={130}/>
-        </div>
+        <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Même QR que ton billet · présente-le à la caisse</div>
+        {billet.barcode
+          ? <><div style={{display:"flex",justifyContent:"center",background:B.white,borderRadius:10,padding:10}}>
+              <QRCode value={billet.barcode} size={130}/>
+            </div>
+            <div style={{fontFamily:"monospace",fontSize:10,color:B.muted,letterSpacing:2,textAlign:"center",marginTop:8}}>{billet.barcode}</div></>
+          : <div style={{fontSize:11,color:B.muted,textAlign:"center",padding:"8px 0"}}>Ton billet est nécessaire pour cumuler des points.</div>}
       </div>
     </div>}
   </div>;
