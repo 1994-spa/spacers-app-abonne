@@ -12,6 +12,16 @@ const IMG_CROWD   = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0J
 const SUPA_URL  = "https://usdtgkzfmwmbrezgtaki.supabase.co";
 const SUPA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzZHRna3pmbXdtYnJlemd0YWtpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyODIxMTQsImV4cCI6MjA5Nzg1ODExNH0.o_CxZcM_k_if3q3tziXF4O85KzXaJ7MhfkXP0esvvGk";
 
+/* ── ACTU DU CLUB (feed Instagram via Supabase business-club, lecture seule) ── */
+const SOCIAL_URL  = "https://goaviqaevdkvptejrreo.supabase.co";
+const SOCIAL_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvYXZpcWFldmRrdnB0ZWpycmVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNzgxMjMsImV4cCI6MjA5NDg1NDEyM30.I_KY72kLksYb4iRk9Y_Q3E_gcaK6xtm1zjb5qGaqpc4";
+const INSTA_URL   = "https://www.instagram.com/spacerstoulouse";
+const socialImg = (p) => {
+  const b = p.image_b64;
+  if (b) return b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`;
+  return p.image_url || null;
+};
+
 const api = {
   headers: (token) => ({
     "apikey":        SUPA_ANON,
@@ -393,6 +403,17 @@ function ScreenAccueil({ abonne, matchs }) {
   const match  = matchs.find(m => m.statut === "planifie");
 
   const [showAccess,setShowAccess] = useState(false);
+  const [posts,setPosts] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    fetch(`${SOCIAL_URL}/rest/v1/social_posts?visible=eq.true&select=id,url,contenu,image_url,image_b64,auteur,published_at&order=published_at.desc&limit=6`, {
+      headers: { apikey: SOCIAL_ANON, Authorization: `Bearer ${SOCIAL_ANON}` },
+    })
+      .then(r => (r.ok ? r.json() : []))
+      .then(data => { if (alive && Array.isArray(data)) setPosts(data.filter(p => socialImg(p))); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const ouverture = (() => {
     const h = match?.heure?.slice(0,5);
     if (!h) return "1h avant le match";
@@ -498,6 +519,29 @@ function ScreenAccueil({ abonne, matchs }) {
         <div style={{marginBottom:12}}>Stations VélÔToulouse : n°20 (Métro Canal du Midi) et n°12 (Métro Compans).</div>
 
         <a href="https://www.tisseo.fr/calculateur" target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",background:B.day,color:B.night,fontWeight:800,padding:"10px",borderRadius:10,textDecoration:"none"}}>Calculer mon itinéraire (Tisséo)</a>
+      </div>
+    )}
+
+    {/* ACTU DU CLUB (Instagram) */}
+    {posts.length > 0 && (
+      <div style={{marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Actu du club</div>
+          <a href={INSTA_URL} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:B.day,fontWeight:700,textDecoration:"none"}}>@spacerstoulouse →</a>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:4,borderRadius:12,overflow:"hidden"}}>
+          {posts.map(p => (
+            <a key={p.id} href={p.url || INSTA_URL} target="_blank" rel="noopener noreferrer"
+               style={{position:"relative",paddingTop:"100%",display:"block",background:B.nightLL,overflow:"hidden"}}>
+              <img src={socialImg(p)} alt={p.contenu ? p.contenu.slice(0,60) : "Publication Instagram"} loading="lazy"
+                   style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} />
+            </a>
+          ))}
+        </div>
+        <a href={INSTA_URL} target="_blank" rel="noopener noreferrer"
+           style={{display:"block",textAlign:"center",marginTop:8,fontSize:12,color:B.day,fontWeight:700,textDecoration:"none"}}>
+          Voir plus sur @spacerstoulouse
+        </a>
       </div>
     )}
 
