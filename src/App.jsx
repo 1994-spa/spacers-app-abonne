@@ -1442,11 +1442,14 @@ export default function App() {
     </div>
   );
 
+  const sbSession = (()=>{ try { return JSON.parse(localStorage.getItem("sb_session")||"null"); } catch { return null; } })();
+  const sbToken = sbSession?.access_token || SUPA_ANON;
+
   if(!abonne.profil_complete) return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
       <style>{CSS}</style>
       <Stars/>
-      <OnboardingScreen abonne={abonne} token={SUPA_ANON} onComplete={(row)=>{
+      <OnboardingScreen abonne={abonne} token={sbToken} onComplete={(row)=>{
         setAbonne(row);
         setRgpd({ essential:true, analytics:row.rgpd_analytics||false, marketing:row.rgpd_marketing||false });
       }}/>
@@ -1480,7 +1483,7 @@ export default function App() {
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
         {tab==="rewards"   && <ScreenRecompenses abonne={abonne}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
-        {tab==="profil"    && <ScreenProfil abonne={abonne} token={token} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout}/>}
+        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
