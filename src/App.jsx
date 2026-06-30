@@ -451,7 +451,45 @@ function ScreenAccueil({ abonne, matchs }) {
     } catch(e){ console.error(e); setFbState("error"); }
   }
 
+  // Anniversaire de l'abonné : carte surprise + vidéo le jour J
+  const isBirthday = (() => {
+    const dob = abonne?.date_naissance;
+    if(!dob) return false;
+    const p = String(dob).slice(0,10).split("-");
+    if(p.length !== 3) return false;
+    const now = new Date();
+    return (now.getMonth()+1) === Number(p[1]) && now.getDate() === Number(p[2]);
+  })();
+  const [bdayVideo,setBdayVideo] = useState(null);
+  useEffect(() => {
+    if(!isBirthday || !abonne?.anniv_video_path) return;
+    let alive = true;
+    (async () => {
+      try {
+        const sess = JSON.parse(localStorage.getItem("sb_session")||"null");
+        const access = sess?.access_token;
+        const res = await fetch(`${SUPA_URL}/storage/v1/object/sign/anniversaires/${abonne.anniv_video_path}`, {
+          method:"POST",
+          headers:{ apikey:SUPA_ANON, Authorization:`Bearer ${access||SUPA_ANON}`, "Content-Type":"application/json" },
+          body: JSON.stringify({ expiresIn: 3600 }),
+        });
+        if(!res.ok) return;
+        const data = await res.json();
+        const signed = data?.signedURL || data?.signedUrl;
+        if(alive && signed) setBdayVideo(`${SUPA_URL}/storage/v1${signed}`);
+      } catch(e){ console.error(e); }
+    })();
+    return () => { alive = false; };
+  }, [isBirthday, abonne?.anniv_video_path]);
+
   return <div style={{padding:"16px 16px 8px"}}>
+    {isBirthday && (
+      <div style={{background:`linear-gradient(135deg,${B.gold}22,${B.nightLL})`,border:`1px solid ${B.gold}55`,borderRadius:18,padding:16,marginBottom:16}}>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.gold,marginBottom:6}}>🎉 Joyeux anniversaire {abonne?.prenom} !</div>
+        <div style={{fontSize:12,color:B.light,marginBottom:bdayVideo?12:0,lineHeight:1.5}}>Toute l'équipe des Spacer's te souhaite une superbe journée 🏐</div>
+        {bdayVideo && <video src={bdayVideo} controls playsInline style={{width:"100%",borderRadius:12,background:"#000",display:"block"}}/>}
+      </div>
+    )}
     <div style={{marginBottom:16}}>
       <div style={{fontSize:11,color:B.muted}}>Bonsoir {abonne?.prenom} ✦</div>
       <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white,marginTop:3,lineHeight:1.4}}>Bienvenue au Palais<br/>André-Brouat</div>
