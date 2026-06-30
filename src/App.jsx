@@ -425,6 +425,32 @@ function ScreenAccueil({ abonne, matchs }) {
 
   const daysUntil = match ? Math.ceil((new Date(match.date_match) - new Date()) / 86400000) : null;
 
+  // Boîte de feedback abonné (envoyée au club, stockée en base)
+  const FB_CATS = ["Jour de match","Billetterie","Application","Communauté","Autre"];
+  const [fbCat,setFbCat]     = useState(FB_CATS[0]);
+  const [fbMsg,setFbMsg]     = useState("");
+  const [fbState,setFbState] = useState("idle"); // idle | sending | sent | error
+  async function sendFeedback() {
+    if(!fbMsg.trim()) return;
+    setFbState("sending");
+    try {
+      const sess = JSON.parse(localStorage.getItem("sb_session")||"null");
+      const access = sess?.access_token;
+      const res = await fetch(`${SUPA_URL}/rest/v1/feedback`, {
+        method:"POST",
+        headers:{ apikey:SUPA_ANON, Authorization:`Bearer ${access||SUPA_ANON}`, "Content-Type":"application/json", Prefer:"return=minimal" },
+        body: JSON.stringify({
+          abonne_id: abonne?.id, email: abonne?.email,
+          prenom: abonne?.prenom, nom: abonne?.nom,
+          categorie: fbCat, message: fbMsg.trim(),
+        }),
+      });
+      if(!res.ok) throw new Error("feedback "+res.status);
+      setFbMsg(""); setFbState("sent");
+      setTimeout(()=>setFbState("idle"), 3500);
+    } catch(e){ console.error(e); setFbState("error"); }
+  }
+
   return <div style={{padding:"16px 16px 8px"}}>
     <div style={{marginBottom:16}}>
       <div style={{fontSize:11,color:B.muted}}>Bonsoir {abonne?.prenom} ✦</div>
@@ -577,6 +603,23 @@ function ScreenAccueil({ abonne, matchs }) {
       </div>
       <span style={{fontSize:14,color:B.day,fontWeight:700}}>↗</span>
     </a>
+
+    {/* Améliorer l'expérience abonné (feedback) */}
+    <div style={{background:`linear-gradient(135deg,${B.day}10,${B.nightLL})`,border:`1px solid ${B.day}30`,borderRadius:14,padding:14,marginTop:16}}>
+      <div style={{fontSize:13,fontWeight:800,color:B.white,marginBottom:3}}>💡 Améliorer l'expérience abonné</div>
+      <div style={{fontSize:11,color:B.muted,marginBottom:12}}>Partage tes suggestions, retours et idées pour améliorer le club et l'app.</div>
+      <select value={fbCat} onChange={e=>setFbCat(e.target.value)}
+        style={{width:"100%",padding:"10px 12px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,marginBottom:10,colorScheme:"dark"}}>
+        {FB_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+      </select>
+      <textarea value={fbMsg} onChange={e=>setFbMsg(e.target.value)} placeholder="Suggestion, retour, idée d'amélioration…" rows={3}
+        style={{width:"100%",padding:"10px 12px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,marginBottom:10,resize:"vertical",outline:"none"}}/>
+      <button onClick={sendFeedback} disabled={fbState==="sending"||!fbMsg.trim()}
+        style={{width:"100%",padding:"12px",background:fbState==="sent"?B.green:B.day,border:"none",borderRadius:11,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:(fbState==="sending"||!fbMsg.trim())?"default":"pointer",opacity:(fbState==="sending"||!fbMsg.trim())?.6:1}}>
+        {fbState==="sending"?"Envoi…":fbState==="sent"?"✓ Merci, message envoyé !":"Partager"}
+      </button>
+      {fbState==="error" && <div style={{fontSize:11,color:B.red,marginTop:8,textAlign:"center"}}>Échec de l'envoi. Réessaie.</div>}
+    </div>
   </div>;
 }
 
