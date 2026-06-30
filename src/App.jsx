@@ -118,6 +118,165 @@ const getPalier = pts => [...PALIERS].reverse().find(p => pts >= p.min) || PALIE
 const getNextP  = pts => PALIERS.find(p => p.min > pts);
 const getAmbass = n   => [...AMBASSADEUR].reverse().find(a => n >= a.min);
 
+/* ── TUTORIELS (overlays plein écran) ─────────────────────── */
+function TutoIco({ d, size=20 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+}
+const ICO_PREV  = "M15 18l-6-6 6-6";
+const ICO_NEXT  = "M9 18l6-6-6-6";
+const ICO_CLOSE = "M18 6L6 18M6 6l12 12";
+const TUTO_STARFIELD = `radial-gradient(1px 1px at 20% 18%, ${B.dayL}b3, transparent),radial-gradient(1px 1px at 70% 12%, ${B.dayL}80, transparent),radial-gradient(1.5px 1.5px at 85% 30%, ${B.day}99, transparent),radial-gradient(1px 1px at 35% 40%, ${B.dayL}66, transparent),radial-gradient(1px 1px at 12% 62%, ${B.day}80, transparent),radial-gradient(1.5px 1.5px at 60% 80%, ${B.dayL}73, transparent),radial-gradient(1px 1px at 88% 72%, ${B.day}66, transparent)`;
+
+function TutoShell({ slides, renderVisual, onClose, finalLabel }) {
+  const [i,setI] = useState(0);
+  const touchX = useRef(null);
+  const last = slides.length-1;
+  const next = ()=>setI(v=>Math.min(v+1,last));
+  const prev = ()=>setI(v=>Math.max(v-1,0));
+  useEffect(()=>{
+    const onKey = e => { if(e.key==="ArrowRight")next(); else if(e.key==="ArrowLeft")prev(); else if(e.key==="Escape")onClose(); };
+    window.addEventListener("keydown",onKey);
+    return ()=>window.removeEventListener("keydown",onKey);
+  },[last]);
+  const onTouchStart = e => { touchX.current = e.touches[0].clientX; };
+  const onTouchEnd = e => {
+    if(touchX.current==null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    if(dx<-40) next(); else if(dx>40) prev();
+    touchX.current = null;
+  };
+  const s = slides[i];
+  return (
+    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      style={{position:"fixed",inset:0,zIndex:9000,background:B.night,maxWidth:430,margin:"0 auto",display:"flex",flexDirection:"column"}}>
+      <style>{`@keyframes tutoIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}@media (prefers-reduced-motion:reduce){.tuto-slide,.tuto-ring{animation:none!important}}`}</style>
+      <div aria-hidden style={{position:"absolute",inset:0,pointerEvents:"none",backgroundImage:TUTO_STARFIELD}}/>
+      <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 20px 8px"}}>
+        <span style={{fontFamily:"Orbitron,sans-serif",color:B.day,fontSize:13,fontWeight:700,letterSpacing:2}}>SPACER'S</span>
+        <button onClick={onClose} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",border:"none",color:B.dayL,fontFamily:"inherit",fontSize:13,cursor:"pointer"}}>Passer <TutoIco d={ICO_CLOSE} size={14}/></button>
+      </div>
+      <div style={{position:"relative",flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"8px 26px",overflowY:"auto"}}>
+        <div key={i} className="tuto-slide" style={{animation:"tutoIn .42s ease both",width:"100%"}}>
+          {renderVisual(s)}
+          <div style={{fontFamily:"Orbitron,sans-serif",color:B.day,fontSize:11,fontWeight:700,letterSpacing:3,textTransform:"uppercase",marginBottom:10}}>{s.label}</div>
+          <h2 style={{fontFamily:"Orbitron,sans-serif",color:B.white,fontSize:22,fontWeight:700,margin:"0 0 12px",lineHeight:1.25}}>{s.title}</h2>
+          <p style={{color:B.dayL,fontSize:14,lineHeight:1.6,margin:"0 auto",maxWidth:300}}>{s.body}</p>
+        </div>
+      </div>
+      <div style={{position:"relative",padding:"0 22px 26px"}}>
+        <div style={{display:"flex",justifyContent:"center",gap:7,marginBottom:18}}>
+          {slides.map((_,k)=>(
+            <button key={k} onClick={()=>setI(k)} aria-label={`Diapo ${k+1}`} style={{width:k===i?22:7,height:7,borderRadius:99,border:"none",cursor:"pointer",padding:0,background:k===i?B.day:`${B.dayL}47`,boxShadow:k===i?`0 0 10px ${B.day}99`:"none",transition:"width .25s,background .25s"}}/>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={prev} disabled={i===0} style={{display:"flex",alignItems:"center",justifyContent:"center",width:48,height:48,borderRadius:14,border:`1px solid ${B.day}4d`,background:"transparent",color:i===0?`${B.dayL}40`:B.dayL,cursor:i===0?"default":"pointer",flexShrink:0}}><TutoIco d={ICO_PREV}/></button>
+          {i===last
+            ? <button onClick={onClose} style={{flex:1,height:48,borderRadius:14,border:"none",background:B.day,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:14,fontWeight:700,letterSpacing:1,cursor:"pointer"}}>{finalLabel}</button>
+            : <button onClick={next} style={{flex:1,height:48,borderRadius:14,border:"none",background:B.day,color:B.night,fontFamily:"inherit",fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>Suivant <TutoIco d={ICO_NEXT} size={18}/></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TutoOrbit({ glyph }) {
+  return <div style={{position:"relative",width:118,height:118,margin:"0 auto 24px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div className="tuto-ring" aria-hidden style={{position:"absolute",inset:0,borderRadius:"50%",border:`1px solid ${B.day}59`,borderTopColor:B.day,animation:"spin 9s linear infinite"}}/>
+    <div style={{width:92,height:92,borderRadius:"50%",background:B.nightLL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:42,boxShadow:`0 0 28px ${B.day}40`}}>{glyph}</div>
+  </div>;
+}
+
+const TUTO_GLOBAL = [
+  {glyph:"🏐",label:"Bienvenue",title:"Bienvenue chez les Spacer's",body:"Ton espace abonné, c'est ici. Billets, points, communauté, avantages : tout est regroupé dans l'appli. On te montre l'essentiel en 30 secondes."},
+  {glyph:"🧭",label:"Se repérer",title:"Te repérer",body:"Le menu en bas de l'écran fait passer d'un espace à l'autre : Accueil, Matchs, Billet, Points, Communauté. Ton profil se trouve en haut à droite."},
+  {glyph:"🏠",label:"Accueil",title:"L'Accueil",body:"L'actu du club, le prochain match, comment venir au Palais des Sports et le classement de Ligue A. Une surprise t'attend même le jour de ton anniversaire 🎉. Et une boîte à idées pour nous aider à améliorer l'appli."},
+  {glyph:"🗓️",label:"Matchs",title:"Les Matchs",body:"Toute la saison à domicile. Ouvre un match pour voir les détails et rejoindre le fil de discussion d'avant-match avec les autres abonnés."},
+  {glyph:"🎟️",label:"Billet",title:"Ton Billet",body:"Ton abonnement et son QR code : tu le présentes directement à l'entrée du Palais. Juste en dessous, tes réductions partenaires — −10 % sur les boissons à la buvette, −10 % à la boutique."},
+  {glyph:"✨",label:"Points",title:"Tes Points",body:"1 € dépensé = 1 point. Tu grimpes les paliers : Comète, Étoile, Constellation, Galaxie. Plus tu suis le club, plus tu débloques d'avantages."},
+  {glyph:"💬",label:"Communauté",title:"La Communauté",body:"Un fil général pour tout le monde, et un fil par match. Pour échanger, se chambrer gentiment et vivre la saison ensemble. Reste fair-play : les échanges sont modérés par le club."},
+  {glyph:"🤝",label:"Parrainage",title:"Parraine tes proches",body:"Partage ton code de parrainage depuis ton Profil. Ton filleul rejoint l'aventure, et toi tu montes Ambassadeur — jusqu'au statut Platine."},
+  {glyph:"🔒",label:"Confidentialité",title:"Profil & confidentialité",body:"Tes infos, tes préférences de communication et l'export de toutes tes données quand tu veux. Tu gardes la main sur ce que tu partages."},
+  {glyph:"🚀",label:"C'est parti",title:"C'est parti !",body:"Tu pourras revoir ce tuto à tout moment depuis ton Profil. Bon match — et allez les Spacer's !"},
+];
+
+function TutoOnboarding({ onClose }) {
+  return <TutoShell slides={TUTO_GLOBAL} onClose={onClose} finalLabel="COMMENCER"
+    renderVisual={(s)=><TutoOrbit glyph={s.glyph}/>}/>;
+}
+
+const TUTO_GAMIF = [
+  {kind:"glyph",glyph:"🏆",label:"Récompenses",title:"Gagne des récompenses",body:"Plus tu vis la saison avec le club, plus tu cumules des points, grimpes des paliers et débloques des badges. Voici comment tout marche."},
+  {kind:"points",label:"Points",title:"Gagner des points",body:"C'est simple : chaque euro dépensé à la buvette ou à la boutique te rapporte un point. Tes points s'ajoutent tout seuls à ton compteur."},
+  {kind:"paliers",label:"Paliers",title:"Les 4 paliers",body:"Tes points te font monter, du plus accessible au plus prestigieux. Chaque palier marque ta fidélité au club."},
+  {kind:"ambassadeur",label:"Parrainage",title:"Deviens Ambassadeur",body:"Invite tes proches avec ton code de parrainage. Chaque filleul te fait monter en grade."},
+  {kind:"badges",label:"Badges",title:"Les badges",body:"Des défis à débloquer au fil de la saison. Certains sont déjà actifs, d'autres arrivent bientôt."},
+  {kind:"glyph",glyph:"🎯",label:"À toi de jouer",title:"À toi de jouer",body:"Tu retrouves tout ça dans l'onglet Points, mis à jour en temps réel. Allez les Spacer's !"},
+];
+
+const TUTO_BADGES = [
+  {ic:"☄️",l:"1er match",h:"Offert dès ton arrivée",ok:true},
+  {ic:"⭐",l:"Palier Étoile",h:"Atteins 50 points",ok:true},
+  {ic:"🌌",l:"Constellation",h:"Atteins 150 points",ok:true},
+  {ic:"🚀",l:"1er filleul",h:"Parraine 1 personne",ok:true},
+  {ic:"🥇",l:"Ambassadeur Or",h:"Atteins 5 filleuls",ok:true},
+  {ic:"🍺",l:"Buvette ×5",h:"Bientôt",ok:false},
+  {ic:"📸",l:"Photo tribune",h:"Bientôt",ok:false},
+  {ic:"🎯",l:"Pronostic parfait",h:"Bientôt",ok:false},
+];
+
+function TutoGamification({ onClose }) {
+  const renderVisual = (s) => {
+    if(s.kind==="glyph") return <TutoOrbit glyph={s.glyph}/>;
+    if(s.kind==="points") return (
+      <div style={{margin:"0 auto 24px",display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:30,fontWeight:700,color:B.white}}>1&nbsp;€</div>
+        <span style={{color:B.muted,display:"inline-flex"}}><TutoIco d={ICO_NEXT} size={22}/></span>
+        <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 16px",borderRadius:99,background:`${B.day}1f`,border:`1px solid ${B.day}55`,boxShadow:`0 0 22px ${B.day}38`}}>
+          <span style={{fontSize:18}}>✨</span><span style={{fontFamily:"Orbitron,sans-serif",fontSize:16,fontWeight:700,color:B.day}}>1 point</span>
+        </div>
+      </div>
+    );
+    if(s.kind==="paliers") return (
+      <div style={{display:"flex",gap:7,marginBottom:22}}>
+        {PALIERS.map(p=>(
+          <div key={p.name} style={{flex:1,padding:"12px 4px",borderRadius:12,background:`${p.color}14`,border:`1px solid ${p.color}40`,textAlign:"center"}}>
+            <div style={{fontSize:22,marginBottom:6}}>{p.icon}</div>
+            <div style={{fontSize:9,fontWeight:700,color:p.color,lineHeight:1.25}}>{p.name}</div>
+            <div style={{fontSize:9,color:B.muted,marginTop:2}}>{p.min}+ pts</div>
+          </div>
+        ))}
+      </div>
+    );
+    if(s.kind==="ambassadeur") return (
+      <div style={{display:"flex",gap:7,marginBottom:22}}>
+        {AMBASSADEUR.map(a=>(
+          <div key={a.name} style={{flex:1,padding:"12px 4px",borderRadius:12,background:`${a.color}14`,border:`1px solid ${a.color}40`,textAlign:"center"}}>
+            <div style={{fontSize:22,marginBottom:6}}>{a.icon}</div>
+            <div style={{fontSize:9,fontWeight:700,color:a.color,lineHeight:1.25}}>{a.name.replace("Ambassadeur ","")}</div>
+            <div style={{fontSize:9,color:B.muted,marginTop:2}}>{a.min} filleul{a.min>1?"s":""}</div>
+          </div>
+        ))}
+      </div>
+    );
+    if(s.kind==="badges") return (
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:6}}>
+        {TUTO_BADGES.map(b=>(
+          <div key={b.l} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:11,background:B.nightLL,border:`1px solid ${b.ok?`${B.day}45`:B.nightB}`,opacity:b.ok?1:.55,textAlign:"left"}}>
+            <span style={{fontSize:21,filter:b.ok?"none":"grayscale(1)",flexShrink:0}}>{b.ic}</span>
+            <span style={{minWidth:0}}>
+              <span style={{display:"block",fontSize:11,fontWeight:700,color:B.white,lineHeight:1.2}}>{b.l}</span>
+              <span style={{display:"block",fontSize:9,color:b.ok?B.green:B.muted,marginTop:2}}>{b.h}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+    return null;
+  };
+  return <TutoShell slides={TUTO_GAMIF} onClose={onClose} finalLabel="J'AI COMPRIS" renderVisual={renderVisual}/>;
+}
+
 /* ── COMPONENTS ──────────────────────────────────────────── */
 function Stars() {
   const s = Array.from({length:30},(_,i)=>({x:(i*37+13)%100,y:(i*53+7)%100,s:[1,1.5,2][i%3],o:[.2,.35,.5][i%3],d:[3,4,5][i%3]}));
@@ -817,7 +976,7 @@ function ScreenMatchs({ matchs }) {
 }
 
 /* ── SCREEN: RÉCOMPENSES ─────────────────────────────────── */
-function ScreenRecompenses({ abonne }) {
+function ScreenRecompenses({ abonne, onReplay }) {
   const points = abonne?.points_total || 0;
   const palier = getPalier(points);
   const next   = getNextP(points);
@@ -838,7 +997,10 @@ function ScreenRecompenses({ abonne }) {
   ];
 
   return <div style={{padding:16}}>
-    <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:14}}>Récompenses</div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+      <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white}}>Récompenses</div>
+      <button onClick={()=>onReplay&&onReplay()} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",border:`1px solid ${B.nightB}`,borderRadius:9,padding:"6px 10px",color:B.day,fontFamily:"inherit",fontSize:11,fontWeight:600,cursor:"pointer"}}>❓ Revoir</button>
+    </div>
 
     <div style={{background:`radial-gradient(ellipse at 50% 0%,${palier.color}25 0%,${B.nightLL} 70%)`,border:`2px solid ${palier.color}40`,borderRadius:20,padding:"22px 18px",textAlign:"center",marginBottom:18}}>
       <div style={{fontSize:42,marginBottom:8}}>{palier.icon}</div>
@@ -1099,7 +1261,7 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
-function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin }) {
+function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin, onReplayTuto }) {
   const [showExport,setShowExport] = useState(false);
   const ambass = getAmbass(abonne?.nb_filleuls||0);
 
@@ -1275,6 +1437,19 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
         </button>
       ))}
     </div>
+
+    {/* Aide */}
+    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>❓ Aide</div>
+    <button onClick={()=>onReplayTuto&&onReplayTuto()} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:"13px 14px",marginBottom:18,cursor:"pointer"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:16}}>🧭</span>
+        <div style={{textAlign:"left"}}>
+          <div style={{fontSize:12,fontWeight:700,color:B.white}}>Revoir le tutoriel</div>
+          <div style={{fontSize:11,color:B.muted}}>La visite guidée de l'application</div>
+        </div>
+      </div>
+      <span style={{fontSize:14,color:B.day,fontWeight:700}}>→</span>
+    </button>
 
     <button onClick={onLogout} style={{width:"100%",padding:"12px",background:"none",border:`1px solid ${B.nightB}`,borderRadius:12,color:B.muted,fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:24}}>
       Se déconnecter
@@ -1617,6 +1792,32 @@ export default function App() {
 
   const showToast = (msg,type="info") => { setToast({msg,type}); };
 
+  // Tutoriels
+  const [showTuto,setShowTuto]           = useState(false);
+  const [showTutoGamif,setShowTutoGamif] = useState(false);
+
+  useEffect(()=>{
+    // Tuto global : 1er lancement, profil complété, et après le RGPD.
+    if(abonne && abonne.profil_complete && !abonne.tuto_vu && !showRgpd) setShowTuto(true);
+  },[abonne,showRgpd]);
+
+  useEffect(()=>{
+    // Tuto gamification : 1re ouverture de l'onglet Points.
+    if(tab==="rewards" && abonne && !abonne.tuto_gamif_vu) setShowTutoGamif(true);
+  },[tab,abonne]);
+
+  async function markTutoSeen(field){
+    let tok = SUPA_ANON;
+    try { tok = JSON.parse(localStorage.getItem("sb_session")||"null")?.access_token || SUPA_ANON; } catch {}
+    const optimistic = { ...abonne, [field]:true };
+    localStorage.setItem("spacers_abonne", JSON.stringify(optimistic));
+    setAbonne(optimistic);
+    try { await api.patch(`/abonnes?id=eq.${abonne.id}`, tok, { [field]:true }); }
+    catch(e){ console.error("maj tuto:",e); }
+  }
+  const finishTuto      = ()=>{ setShowTuto(false);      markTutoSeen("tuto_vu"); };
+  const finishTutoGamif = ()=>{ setShowTutoGamif(false); markTutoSeen("tuto_gamif_vu"); };
+
   const CSS = `
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600;700;800&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;font-family:Inter,'Segoe UI',sans-serif}
@@ -1761,15 +1962,17 @@ export default function App() {
         {tab==="home"      && <ScreenAccueil abonne={abonne} matchs={matchs}/>}
         {tab==="matchs"    && <ScreenMatchs matchs={matchs}/>}
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
-        {tab==="rewards"   && <ScreenRecompenses abonne={abonne}/>}
+        {tab==="rewards"   && <ScreenRecompenses abonne={abonne} onReplay={()=>setShowTutoGamif(true)}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
-        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")}/>}
+        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")} onReplayTuto={()=>setShowTuto(true)}/>}
         {tab==="admin"     && abonne?.is_admin && <ScreenAdmin abonne={abonne} token={sbToken} onBack={()=>setTab("profil")}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
       {showRgpd && <RgpdSheet onAccept={c=>{setRgpd(c);setShowRgpd(false);}}/>}
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+      {showTuto && <TutoOnboarding onClose={finishTuto}/>}
+      {showTutoGamif && <TutoGamification onClose={finishTutoGamif}/>}
     </div>
   );
 }
