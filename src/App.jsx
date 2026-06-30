@@ -1017,20 +1017,45 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
-function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
+function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
   const [showExport,setShowExport] = useState(false);
   const ambass = getAmbass(abonne?.nb_filleuls||0);
-  const [naissance,setNaissance] = useState(abonne?.date_naissance || "");
-  const [savedN,setSavedN] = useState(false);
 
-  async function saveNaissance(v) {
-    setNaissance(v);
-    setSavedN(false);
+  // Coordonnées éditables
+  const [civilite,setCivilite]   = useState(abonne?.civilite || "");
+  const [prenom,setPrenom]       = useState(abonne?.prenom || "");
+  const [nom,setNom]             = useState(abonne?.nom || "");
+  const [naissance,setNaissance] = useState(abonne?.date_naissance || "");
+  const [tel,setTel]             = useState(abonne?.telephone || "");
+  const [rue,setRue]             = useState(abonne?.adresse_rue || "");
+  const [cp,setCp]               = useState(abonne?.code_postal || "");
+  const [ville,setVille]         = useState(abonne?.ville || "");
+  const [savedC,setSavedC]       = useState(false);
+  const [errC,setErrC]           = useState("");
+  const [loadingC,setLoadingC]   = useState(false);
+
+  async function saveCoordonnees() {
+    setErrC("");
+    if(!civilite)                             return setErrC("Choisis ta civilité.");
+    if(!prenom.trim() || !nom.trim())         return setErrC("Indique ton prénom et ton nom.");
+    if(!naissance)                            return setErrC("Indique ta date de naissance.");
+    if(!/^[0-9 +().-]{8,}$/.test(tel.trim())) return setErrC("Numéro de téléphone invalide.");
+    if(!rue.trim())                           return setErrC("Indique ton adresse.");
+    if(!/^[0-9]{5}$/.test(cp.trim()))         return setErrC("Code postal invalide (5 chiffres).");
+    if(!ville.trim())                         return setErrC("Indique ta ville.");
+    setLoadingC(true);
     try {
-      await api.patch(`/abonnes?id=eq.${abonne.id}`, token, { date_naissance: v || null });
-      setSavedN(true);
-      setTimeout(()=>setSavedN(false), 2200);
-    } catch(e) { console.error(e); }
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, {
+        civilite, prenom:prenom.trim(), nom:nom.trim(),
+        date_naissance:naissance, telephone:tel.trim(),
+        adresse_rue:rue.trim(), code_postal:cp.trim(), ville:ville.trim(),
+      });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if(row) { localStorage.setItem("spacers_abonne", JSON.stringify(row)); onUpdate && onUpdate(row); }
+      setSavedC(true);
+      setTimeout(()=>setSavedC(false), 2200);
+    } catch(e) { console.error(e); setErrC("Échec de l'enregistrement. Réessaie."); }
+    setLoadingC(false);
   }
 
   async function saveRgpd(newRgpd) {
@@ -1042,6 +1067,21 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
       });
     } catch(e) { console.error(e); }
   }
+
+  // Partage du code de parrainage
+  const refUrl = `https://abonnes.spacerstoulouse.fr/?parrain=${encodeURIComponent(abonne?.code_parrainage||"")}`;
+  const refMsg = `Rejoins-moi chez les Spacer's Toulouse Volley ! 🏐 Utilise mon code parrain ${abonne?.code_parrainage||""} : ${refUrl}`;
+  const [copied,setCopied] = useState("");
+  async function copyText(t,label){ try{ await navigator.clipboard.writeText(t); setCopied(label); setTimeout(()=>setCopied(""),2200); }catch(e){ console.error(e); } }
+  const shares = {
+    WhatsApp: ()=> window.open(`https://wa.me/?text=${encodeURIComponent(refMsg)}`,"_blank","noopener"),
+    Insta:    ()=> copyText(refMsg,"✓ Message copié — colle-le dans ta story ou ta DM Insta"),
+    Email:    ()=> { window.location.href = `mailto:?subject=${encodeURIComponent("Rejoins les Spacer's Toulouse Volley")}&body=${encodeURIComponent(refMsg)}`; },
+    Lien:     async ()=> { if(navigator.share){ try{ await navigator.share({title:"Spacer's Toulouse Volley",text:refMsg,url:refUrl}); }catch(e){} } else copyText(refUrl,"✓ Lien copié dans le presse-papier"); },
+  };
+
+  const field = {width:"100%",padding:"11px 13px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none",colorScheme:"dark"};
+  const lbl   = {fontSize:10,color:B.muted,fontWeight:700,marginBottom:5,display:"block"};
 
   return <div style={{padding:16}}>
     <div style={{background:`linear-gradient(135deg,${B.day}18,${B.nightLL})`,border:`1px solid ${B.day}40`,borderRadius:18,padding:"18px",marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
@@ -1064,22 +1104,47 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
       </div>
       <div style={{display:"flex",gap:7}}>
         {[["💬","WhatsApp"],["📸","Insta"],["📧","Email"],["🔗","Lien"]].map(([ic,l])=>(
-          <button key={l} style={{flex:1,padding:"7px 4px",background:B.nightB,border:`1px solid ${B.nightB}`,borderRadius:8,color:B.muted,fontFamily:"inherit",fontSize:10,cursor:"pointer",textAlign:"center"}}>
+          <button key={l} onClick={shares[l]} style={{flex:1,padding:"7px 4px",background:B.nightB,border:`1px solid ${B.nightB}`,borderRadius:8,color:B.muted,fontFamily:"inherit",fontSize:10,cursor:"pointer",textAlign:"center"}}>
             <div style={{fontSize:14}}>{ic}</div><div style={{fontSize:9}}>{l}</div>
           </button>
         ))}
       </div>
+      {copied && <div style={{fontSize:10,color:B.green,fontWeight:700,marginTop:9,textAlign:"center"}}>{copied}</div>}
     </div>
 
-    {/* Date de naissance */}
-    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🎂 Ma date de naissance</div>
+    {/* Mes coordonnées */}
+    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>👤 Mes coordonnées</div>
     <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:14,marginBottom:18}}>
-      <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Renseigne-la pour recevoir une petite surprise du club le jour J 🎉</div>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <input type="date" value={naissance} max={new Date().toISOString().slice(0,10)} onChange={e=>saveNaissance(e.target.value)}
-          style={{flex:1,background:B.night,border:`1px solid ${B.nightB}`,borderRadius:9,padding:"10px 12px",color:B.white,fontFamily:"inherit",fontSize:13,colorScheme:"dark"}} />
-        {savedN && <span style={{fontSize:11,color:B.green,fontWeight:700,whiteSpace:"nowrap"}}>✓ Enregistré</span>}
+      <label style={lbl}>Civilité</label>
+      <div style={{display:"flex",gap:8,marginBottom:14}}>
+        {["M.","Mme"].map(c=>(
+          <button key={c} onClick={()=>setCivilite(c)} style={{flex:1,padding:"9px",borderRadius:10,border:`1.5px solid ${civilite===c?B.day:B.nightB}`,background:civilite===c?`${B.day}20`:"transparent",color:civilite===c?B.day:B.muted,fontFamily:"inherit",fontSize:13,fontWeight:700,cursor:"pointer"}}>{c}</button>
+        ))}
       </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:14}}>
+        <div style={{flex:1}}><label style={lbl}>Prénom</label><input value={prenom} onChange={e=>setPrenom(e.target.value)} style={field}/></div>
+        <div style={{flex:1}}><label style={lbl}>Nom</label><input value={nom} onChange={e=>setNom(e.target.value)} style={field}/></div>
+      </div>
+
+      <label style={lbl}>Date de naissance</label>
+      <input type="date" value={naissance} max={new Date().toISOString().slice(0,10)} onChange={e=>setNaissance(e.target.value)} style={{...field,marginBottom:14}}/>
+
+      <label style={lbl}>Téléphone</label>
+      <input type="tel" value={tel} onChange={e=>setTel(e.target.value)} placeholder="06 12 34 56 78" style={{...field,marginBottom:14}}/>
+
+      <label style={lbl}>Adresse postale</label>
+      <input value={rue} onChange={e=>setRue(e.target.value)} placeholder="N° et rue" style={{...field,marginBottom:10}}/>
+      <div style={{display:"flex",gap:10,marginBottom:14}}>
+        <input value={cp} onChange={e=>setCp(e.target.value)} placeholder="Code postal" inputMode="numeric" maxLength={5} style={{...field,flex:"0 0 38%"}}/>
+        <input value={ville} onChange={e=>setVille(e.target.value)} placeholder="Ville" style={{...field,flex:1}}/>
+      </div>
+
+      {errC && <div style={{color:B.red,fontSize:12,marginBottom:10,textAlign:"center"}}>{errC}</div>}
+
+      <button onClick={saveCoordonnees} disabled={loadingC} style={{width:"100%",padding:"12px",background:B.day,border:"none",borderRadius:11,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:loadingC?"default":"pointer",opacity:loadingC?.7:1}}>
+        {loadingC ? "Enregistrement…" : savedC ? "✓ Enregistré" : "Enregistrer mes coordonnées"}
+      </button>
     </div>
 
     {/* RGPD */}
@@ -1483,7 +1548,7 @@ export default function App() {
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
         {tab==="rewards"   && <ScreenRecompenses abonne={abonne}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
-        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout}/>}
+        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
