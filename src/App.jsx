@@ -1060,7 +1060,7 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
-function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
+function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin }) {
   const [showExport,setShowExport] = useState(false);
   const ambass = getAmbass(abonne?.nb_filleuls||0);
 
@@ -1139,6 +1139,18 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
       </div>
     </div>
 
+    {abonne?.is_admin && (
+      <button onClick={onOpenAdmin} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:`linear-gradient(135deg,${B.gold}18,${B.nightLL})`,border:`1px solid ${B.gold}40`,borderRadius:14,padding:"13px 14px",marginBottom:18,cursor:"pointer"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>🎬</span>
+          <div style={{textAlign:"left"}}>
+            <div style={{fontSize:12,fontWeight:700,color:B.white}}>Espace admin</div>
+            <div style={{fontSize:11,color:B.muted}}>Gérer les vidéos d'anniversaire</div>
+          </div>
+        </div>
+        <span style={{fontSize:14,color:B.gold,fontWeight:700}}>→</span>
+      </button>
+    )}
     {/* Code parrainage */}
     <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🚀 Mon code de parrainage</div>
     <div style={{background:`linear-gradient(135deg,${B.gold}12,${B.nightLL})`,border:`1px solid ${B.gold}40`,borderRadius:14,padding:14,marginBottom:18}}>
@@ -1238,6 +1250,121 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
         <button onClick={()=>setShowExport(false)} style={{width:"100%",padding:"12px",background:B.day,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Fermer</button>
       </div>
     </div>}
+  </div>;
+}
+
+/* ── SCREEN: ADMIN — vidéos d'anniversaire ─────────────────── */
+function ScreenAdmin({ abonne, token, onBack }) {
+  const [list,setList] = useState(null);   // null = chargement
+  const [q,setQ]       = useState("");
+  const [sel,setSel]   = useState(null);
+  const [err,setErr]   = useState("");
+
+  async function loadList() {
+    setErr("");
+    try {
+      const rows = await api.get("/abonnes", token, {
+        select: "id,prenom,nom,date_naissance,anniv_video_path,anniv_video_uploaded_at",
+        order: "nom.asc",
+      });
+      setList(Array.isArray(rows)?rows:[]);
+    } catch(e){ console.error(e); setErr("Impossible de charger les abonnés."); setList([]); }
+  }
+  useEffect(()=>{ loadList(); /* eslint-disable-next-line */ },[]);
+
+  if(sel) return <AdminUpload abonne={sel} token={token} onBack={()=>{ setSel(null); loadList(); }} />;
+
+  const filtered = (list||[]).filter(a=>(`${a.prenom||""} ${a.nom||""}`).toLowerCase().includes(q.trim().toLowerCase()));
+  const back = {background:"none",border:"none",color:B.day,fontSize:13,fontWeight:700,cursor:"pointer",padding:0,marginBottom:14};
+
+  return <div style={{padding:16}}>
+    <button onClick={onBack} style={back}>← Retour au profil</button>
+    <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white,marginBottom:4}}>🎬 Vidéos d'anniversaire</div>
+    <div style={{fontSize:12,color:B.muted,marginBottom:14}}>Choisis un abonné pour déposer ou remplacer sa vidéo.</div>
+
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Rechercher un abonné…"
+      style={{width:"100%",padding:"11px 13px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,marginBottom:14,outline:"none"}}/>
+
+    {err && <div style={{color:B.red,fontSize:12,marginBottom:10}}>{err}</div>}
+    {list===null && <div style={{color:B.muted,fontSize:12}}>Chargement…</div>}
+
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {filtered.map(a=>{
+        const dn = a.date_naissance ? new Date(a.date_naissance).toLocaleDateString("fr-FR",{day:"numeric",month:"long"}) : null;
+        return <button key={a.id} onClick={()=>setSel(a)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left"}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:B.white}}>{a.prenom} {a.nom}</div>
+            <div style={{fontSize:11,color:dn?B.muted:B.red,marginTop:2}}>{dn?`🎂 ${dn}`:"date de naissance non renseignée"}</div>
+          </div>
+          {a.anniv_video_path
+            ? <span style={{fontSize:10,color:B.green,fontWeight:700,whiteSpace:"nowrap"}}>✓ vidéo</span>
+            : <span style={{fontSize:18,color:B.day,fontWeight:700}}>＋</span>}
+        </button>;
+      })}
+      {list!==null && filtered.length===0 && <div style={{color:B.muted,fontSize:12}}>Aucun abonné trouvé.</div>}
+    </div>
+  </div>;
+}
+
+function AdminUpload({ abonne, token, onBack }) {
+  const [file,setFile]   = useState(null);
+  const [state,setState] = useState("idle"); // idle | uploading | done | error
+  const [err,setErr]     = useState("");
+  const [dob,setDob]     = useState(abonne.date_naissance || "");
+  const [dobSaved,setDobSaved] = useState(false);
+  const back = {background:"none",border:"none",color:B.day,fontSize:13,fontWeight:700,cursor:"pointer",padding:0,marginBottom:14};
+  const field = {width:"100%",padding:"11px 13px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none",colorScheme:"dark"};
+
+  async function saveDob(v) {
+    setDob(v); setDobSaved(false);
+    if(!v) return;
+    try {
+      await api.patch(`/abonnes?id=eq.${abonne.id}`, token, { date_naissance: v });
+      setDobSaved(true); setTimeout(()=>setDobSaved(false),2500);
+    } catch(e){ console.error(e); }
+  }
+
+  async function upload() {
+    if(!file) return;
+    setState("uploading"); setErr("");
+    try {
+      const path = String(abonne.id); // une vidéo par abonné, écrasée à chaque dépôt (pas d'orphelins)
+      const up = await fetch(`${SUPA_URL}/storage/v1/object/anniversaires/${path}`, {
+        method:"POST",
+        headers:{ Authorization:`Bearer ${token}`, apikey:SUPA_ANON, "x-upsert":"true", "Content-Type":file.type||"video/mp4" },
+        body:file,
+      });
+      if(!up.ok){ const t=await up.text(); throw new Error(`${up.status} ${t.slice(0,120)}`); }
+      await api.patch(`/abonnes?id=eq.${abonne.id}`, token, {
+        anniv_video_path: path,
+        anniv_video_uploaded_at: new Date().toISOString(),
+      });
+      setState("done");
+    } catch(e){ console.error(e); setErr("Échec de l'envoi : "+(e.message||"")); setState("error"); }
+  }
+
+  return <div style={{padding:16}}>
+    <button onClick={onBack} style={back}>← Retour à la liste</button>
+    <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,color:B.white,marginBottom:2}}>{abonne.prenom} {abonne.nom}</div>
+    <div style={{fontSize:12,color:B.muted,marginBottom:18}}>Vidéo d'anniversaire</div>
+
+    <label style={{fontSize:10,color:B.muted,fontWeight:700,marginBottom:5,display:"block"}}>Date de naissance</label>
+    <input type="date" value={dob?String(dob).slice(0,10):""} max={new Date().toISOString().slice(0,10)} onChange={e=>saveDob(e.target.value)} style={{...field,marginBottom:dobSaved?6:18}}/>
+    {dobSaved && <div style={{fontSize:11,color:B.green,fontWeight:700,marginBottom:14}}>✓ Date enregistrée</div>}
+
+    {abonne.anniv_video_path && <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Une vidéo existe déjà — en déposer une nouvelle la remplacera.</div>}
+
+    <label style={{fontSize:10,color:B.muted,fontWeight:700,marginBottom:5,display:"block"}}>Vidéo (format mp4 recommandé)</label>
+    <input type="file" accept="video/*" onChange={e=>{ setFile(e.target.files?.[0]||null); setState("idle"); setErr(""); }}
+      style={{...field,padding:"9px 13px",marginBottom:10}}/>
+    {file && <div style={{fontSize:11,color:B.muted,marginBottom:10}}>{file.name} · {(file.size/1048576).toFixed(1)} Mo</div>}
+
+    <button onClick={upload} disabled={!file||state==="uploading"}
+      style={{width:"100%",padding:"13px",background:state==="done"?B.green:B.day,border:"none",borderRadius:11,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:(!file||state==="uploading")?"default":"pointer",opacity:(!file||state==="uploading")?.6:1}}>
+      {state==="uploading"?"Envoi…":state==="done"?"✓ Vidéo enregistrée":"Déposer la vidéo"}
+    </button>
+    {err && <div style={{fontSize:11,color:B.red,marginTop:10,textAlign:"center"}}>{err}</div>}
+    {!dob && <div style={{fontSize:11,color:B.muted,marginTop:12,textAlign:"center"}}>Sans date de naissance, l'abonné ne recevra pas la surprise le jour J.</div>}
   </div>;
 }
 
@@ -1597,7 +1724,8 @@ export default function App() {
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
         {tab==="rewards"   && <ScreenRecompenses abonne={abonne}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
-        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne}/>}
+        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")}/>}
+        {tab==="admin"     && abonne?.is_admin && <ScreenAdmin abonne={abonne} token={sbToken} onBack={()=>setTab("profil")}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
