@@ -1068,16 +1068,17 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
     } catch(e) { console.error(e); }
   }
 
-  // Partage du code de parrainage
-  const refUrl = `https://abonnes.spacerstoulouse.fr/?parrain=${encodeURIComponent(abonne?.code_parrainage||"")}`;
-  const refMsg = `Rejoins-moi chez les Spacer's Toulouse Volley ! 🏐 Utilise mon code parrain ${abonne?.code_parrainage||""} : ${refUrl}`;
+  // Parrainage : code copiable + liens club
+  const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029VaH5WLF90x31btWwet1C";
+  const CLUB_EMAIL       = "marketing@spacerstoulouse.fr";
   const [copied,setCopied] = useState("");
-  async function copyText(t,label){ try{ await navigator.clipboard.writeText(t); setCopied(label); setTimeout(()=>setCopied(""),2200); }catch(e){ console.error(e); } }
+  async function copyCode(){
+    try { await navigator.clipboard.writeText(abonne?.code_parrainage||""); setCopied("✓ Code copié"); setTimeout(()=>setCopied(""),2200); }
+    catch(e){ console.error(e); }
+  }
   const shares = {
-    WhatsApp: ()=> window.open(`https://wa.me/?text=${encodeURIComponent(refMsg)}`,"_blank","noopener"),
-    Insta:    ()=> copyText(refMsg,"✓ Message copié — colle-le dans ta story ou ta DM Insta"),
-    Email:    ()=> { window.location.href = `mailto:?subject=${encodeURIComponent("Rejoins les Spacer's Toulouse Volley")}&body=${encodeURIComponent(refMsg)}`; },
-    Lien:     async ()=> { if(navigator.share){ try{ await navigator.share({title:"Spacer's Toulouse Volley",text:refMsg,url:refUrl}); }catch(e){} } else copyText(refUrl,"✓ Lien copié dans le presse-papier"); },
+    WhatsApp: ()=> window.open(WHATSAPP_CHANNEL,"_blank","noopener"),
+    Email:    ()=> { window.location.href = `mailto:${CLUB_EMAIL}`; },
   };
 
   const field = {width:"100%",padding:"11px 13px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none",colorScheme:"dark"};
@@ -1098,14 +1099,15 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
     {/* Code parrainage */}
     <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🚀 Mon code de parrainage</div>
     <div style={{background:`linear-gradient(135deg,${B.gold}12,${B.nightLL})`,border:`1px solid ${B.gold}40`,borderRadius:14,padding:14,marginBottom:18}}>
-      <div style={{fontSize:11,color:B.muted,marginBottom:7}}>Gagne 20 pts par ami qui vient au match</div>
-      <div style={{background:B.night,borderRadius:9,padding:"10px 12px",textAlign:"center",marginBottom:10}}>
+      <div style={{fontSize:11,color:B.muted,marginBottom:7}}>Partage ton code : ton filleul profite d'une réduction sur son abonnement.</div>
+      <button onClick={copyCode} style={{width:"100%",background:B.night,borderRadius:9,padding:"10px 12px",textAlign:"center",marginBottom:10,border:`1px solid ${B.nightB}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
         <span style={{fontFamily:"monospace",fontSize:16,color:B.gold,fontWeight:700,letterSpacing:2}}>{abonne?.code_parrainage||"—"}</span>
-      </div>
+        <span style={{fontSize:12,color:B.muted}}>📋</span>
+      </button>
       <div style={{display:"flex",gap:7}}>
-        {[["💬","WhatsApp"],["📸","Insta"],["📧","Email"],["🔗","Lien"]].map(([ic,l])=>(
-          <button key={l} onClick={shares[l]} style={{flex:1,padding:"7px 4px",background:B.nightB,border:`1px solid ${B.nightB}`,borderRadius:8,color:B.muted,fontFamily:"inherit",fontSize:10,cursor:"pointer",textAlign:"center"}}>
-            <div style={{fontSize:14}}>{ic}</div><div style={{fontSize:9}}>{l}</div>
+        {[["💬","WhatsApp"],["📧","Email"]].map(([ic,l])=>(
+          <button key={l} onClick={shares[l]} style={{flex:1,padding:"8px 4px",background:B.nightB,border:`1px solid ${B.nightB}`,borderRadius:8,color:B.muted,fontFamily:"inherit",fontSize:11,cursor:"pointer",textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <span style={{fontSize:14}}>{ic}</span><span>{l}</span>
           </button>
         ))}
       </div>
@@ -1150,11 +1152,15 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate }) {
     {/* RGPD */}
     <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🔒 Mes consentements RGPD</div>
     <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,overflow:"hidden",marginBottom:14}}>
-      {[{key:"essential",label:"Fonctionnement de l'app",locked:true},{key:"analytics",label:"Amélioration de l'app"},{key:"marketing",label:"Offres et actualités"}].map((item,i,arr)=>(
-        <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none"}}>
+      {[
+        {key:"essential",label:"Fonctionnement de l'app",locked:true,desc:"Ta connexion et les données de ton abonnement. Indispensable, ne peut pas être désactivé."},
+        {key:"analytics",label:"Amélioration de l'app",desc:"Statistiques d'usage anonymes (écrans consultés, bugs) pour améliorer l'app. Optionnel."},
+        {key:"marketing",label:"Offres et actualités",desc:"Recevoir par email les offres, nouveautés et invitations du club. Optionnel."},
+      ].map((item,i,arr)=>(
+        <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none"}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:B.white}}>{item.label}</div>
-            {item.locked&&<div style={{fontSize:10,color:B.muted}}>Obligatoire</div>}
+            {item.desc&&<div style={{fontSize:10,color:B.muted,marginTop:3,lineHeight:1.5}}>{item.desc}</div>}
           </div>
           <div onClick={()=>!item.locked&&saveRgpd({...rgpd,[item.key]:!rgpd?.[item.key]})}
             style={{width:46,height:26,borderRadius:13,background:(rgpd?.[item.key]||item.locked)?B.green:B.nightB,cursor:item.locked?"default":"pointer",position:"relative",transition:"background .25s",flexShrink:0}}>
