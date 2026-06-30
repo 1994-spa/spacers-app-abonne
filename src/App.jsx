@@ -220,8 +220,9 @@ const TUTO_BADGES = [
   {ic:"🌌",l:"Constellation",h:"Atteins 150 points",ok:true},
   {ic:"🚀",l:"1er filleul",h:"Parraine 1 personne",ok:true},
   {ic:"🥇",l:"Ambassadeur Or",h:"Atteins 5 filleuls",ok:true},
-  {ic:"🍺",l:"Buvette ×5",h:"Bientôt",ok:false},
-  {ic:"📸",l:"Photo tribune",h:"Bientôt",ok:false},
+  {ic:"🍺",l:"Buvette ×5",h:"5 achats à la buvette",ok:true},
+  {ic:"🛍️",l:"Boutique ×5",h:"5 achats à la boutique",ok:true},
+  {ic:"📸",l:"Photo tribune",h:"Envoie une photo de tribune",ok:true},
   {ic:"🎯",l:"Pronostic parfait",h:"Bientôt",ok:false},
 ];
 
@@ -976,7 +977,59 @@ function ScreenMatchs({ matchs }) {
 }
 
 /* ── SCREEN: RÉCOMPENSES ─────────────────────────────────── */
-function ScreenRecompenses({ abonne, onReplay }) {
+function PhotoTribuneCard({ abonne, token, onUpdate }) {
+  const [state,setState] = useState("idle"); // idle | uploading | done | error
+  const [err,setErr]     = useState("");
+  const inputRef = useRef(null);
+  const has = !!abonne?.photo_tribune_uploaded_at;
+
+  async function onPick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if(!file) return;
+    if(!file.type?.startsWith("image/")) { setErr("Choisis une image."); setState("error"); return; }
+    if(file.size > 10*1048576)           { setErr("Photo trop lourde (max 10 Mo)."); setState("error"); return; }
+    setState("uploading"); setErr("");
+    try {
+      const path = `${abonne.user_id}/tribune.jpg`;
+      const up = await fetch(`${SUPA_URL}/storage/v1/object/tribune/${path}`, {
+        method:"POST",
+        headers:{ Authorization:`Bearer ${token}`, apikey:SUPA_ANON, "x-upsert":"true", "Content-Type":file.type||"image/jpeg" },
+        body:file,
+      });
+      if(!up.ok){ const t=await up.text(); throw new Error(`${up.status} ${t.slice(0,120)}`); }
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, {
+        photo_tribune_path: path,
+        photo_tribune_uploaded_at: new Date().toISOString(),
+      });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if(row){ localStorage.setItem("spacers_abonne", JSON.stringify(row)); onUpdate && onUpdate(row); }
+      setState("done");
+    } catch(e){ console.error(e); setErr("Échec de l'envoi. Réessaie."); setState("error"); }
+  }
+
+  const unlocked = has || state==="done";
+  return <>
+    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>📸 Photo en tribune</div>
+    <div style={{background:B.nightLL,border:`1px solid ${unlocked?`${B.green}55`:B.nightB}`,borderRadius:14,padding:14,marginBottom:18}}>
+      {unlocked ? <div>
+        <div style={{fontSize:12,color:B.green,fontWeight:700,marginBottom:8}}>✓ Photo envoyée — badge débloqué 🎉</div>
+        <button onClick={()=>inputRef.current?.click()} disabled={state==="uploading"} style={{background:"transparent",border:`1px solid ${B.nightB}`,borderRadius:9,padding:"8px 12px",color:B.muted,fontFamily:"inherit",fontSize:11,fontWeight:600,cursor:state==="uploading"?"default":"pointer"}}>
+          {state==="uploading"?"Envoi…":"Remplacer ma photo"}
+        </button>
+      </div> : <div>
+        <div style={{fontSize:11,color:B.muted,marginBottom:10,lineHeight:1.5}}>Envoie une photo depuis ton siège pour débloquer le badge. Elle reste privée : seul le club peut la voir.</div>
+        <button onClick={()=>inputRef.current?.click()} disabled={state==="uploading"} style={{width:"100%",padding:"11px",background:state==="uploading"?B.nightB:B.day,border:"none",borderRadius:11,color:state==="uploading"?B.muted:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:state==="uploading"?"default":"pointer"}}>
+          {state==="uploading"?"Envoi…":"📷 Ajouter ma photo"}
+        </button>
+      </div>}
+      {err && <div style={{fontSize:11,color:B.red,marginTop:10,textAlign:"center"}}>{err}</div>}
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onPick} style={{display:"none"}}/>
+    </div>
+  </>;
+}
+
+function ScreenRecompenses({ abonne, token, onUpdate, onReplay }) {
   const points = abonne?.points_total || 0;
   const palier = getPalier(points);
   const next   = getNextP(points);
@@ -985,14 +1038,19 @@ function ScreenRecompenses({ abonne, onReplay }) {
   const ambass = getAmbass(filleuls);
   const nextAmb= AMBASSADEUR.find(a=>a.min>filleuls);
 
+  const nbBuvette     = abonne?.nb_achats_buvette  || 0;
+  const nbBoutique    = abonne?.nb_achats_boutique || 0;
+  const aPhotoTribune = !!abonne?.photo_tribune_uploaded_at;
+
   const BADGES = [
     {icon:"☄️",label:"1er match",     ok:true},
     {icon:"⭐",label:"Palier ÉTOILE", ok:points>=50},
     {icon:"🌌",label:"Constellation", ok:points>=150},
     {icon:"🚀",label:"1er filleul",   ok:filleuls>=1},
     {icon:"🥇",label:"Ambass. Or",    ok:filleuls>=5},
-    {icon:"🍺",label:"Buvette ×5",    ok:false},
-    {icon:"📸",label:"Photo tribune",  ok:false},
+    {icon:"🍺",label:"Buvette ×5",    ok:nbBuvette>=5},
+    {icon:"🛍️",label:"Boutique ×5",   ok:nbBoutique>=5},
+    {icon:"📸",label:"Photo tribune",  ok:aPhotoTribune},
     {icon:"🎯",label:"Pronostic parfait",ok:false},
   ];
 
@@ -1053,6 +1111,8 @@ function ScreenRecompenses({ abonne, onReplay }) {
       </div>
       {nextAmb&&<div style={{fontSize:11,color:B.muted,marginTop:10,textAlign:"center"}}>{nextAmb.min-filleuls} filleul{nextAmb.min-filleuls>1?"s":""} de plus → {nextAmb.icon} {nextAmb.name}</div>}
     </div>
+
+    <PhotoTribuneCard abonne={abonne} token={token} onUpdate={onUpdate}/>
 
     <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:9}}>Badges</div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
@@ -1962,7 +2022,7 @@ export default function App() {
         {tab==="home"      && <ScreenAccueil abonne={abonne} matchs={matchs}/>}
         {tab==="matchs"    && <ScreenMatchs matchs={matchs}/>}
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
-        {tab==="rewards"   && <ScreenRecompenses abonne={abonne} onReplay={()=>setShowTutoGamif(true)}/>}
+        {tab==="rewards"   && <ScreenRecompenses abonne={abonne} token={sbToken} onUpdate={setAbonne} onReplay={()=>setShowTutoGamif(true)}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
         {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")} onReplayTuto={()=>setShowTuto(true)}/>}
         {tab==="admin"     && abonne?.is_admin && <ScreenAdmin abonne={abonne} token={sbToken} onBack={()=>setTab("profil")}/>}
