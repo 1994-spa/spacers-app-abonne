@@ -17,6 +17,10 @@ const SOCIAL_URL  = "https://goaviqaevdkvptejrreo.supabase.co";
 const SOCIAL_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvYXZpcWFldmRrdnB0ZWpycmVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyNzgxMjMsImV4cCI6MjA5NDg1NDEyM30.I_KY72kLksYb4iRk9Y_Q3E_gcaK6xtm1zjb5qGaqpc4";
 const INSTA_URL   = "https://www.instagram.com/spacerstoulouse";
 const CLASSEMENT_URL = "https://www.flashscore.fr/volleyball/france/ligue-a/#/WzjcpSNF/classements/global/";
+const BILLETTERIE_URL = "https://billetterie.spacerstoulouse.fr/";
+const EQUIPE_PRO_URL  = "https://www.spacerstoulouse.fr/equipe-pro/";
+const CONSENT_VERSION = "1.0"; // bump à chaque modif substantielle de la politique -> force la ré-acceptation
+const DPO_EMAIL       = "rgpd@spacerstoulouse.fr";
 const socialImg = (p) => {
   const b = p.image_b64;
   if (b) return b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`;
@@ -92,6 +96,36 @@ const api = {
     } catch { return null; }
   },
 };
+
+/* ── RGPD : âge & journal d'audit des consentements ──────── */
+function ageFromDOB(dob){
+  if(!dob) return null;
+  const d = new Date(dob); if(isNaN(d.getTime())) return null;
+  const t = new Date();
+  let a = t.getFullYear() - d.getFullYear();
+  const m = t.getMonth() - d.getMonth();
+  if(m < 0 || (m === 0 && t.getDate() < d.getDate())) a--;
+  return a;
+}
+const isMinor       = dob => { const a = ageFromDOB(dob); return a != null && a < 18; };
+const needsParental = dob => { const a = ageFromDOB(dob); return a != null && a < 15; };
+
+// Écrit une ligne dans la table d'audit `consents` (immuable). Best-effort : n'interrompt jamais le flux.
+async function logConsent(email, type, granted, metadata){
+  if(!email) return;
+  let tok = SUPA_ANON;
+  try { tok = JSON.parse(localStorage.getItem("sb_session")||"null")?.access_token || SUPA_ANON; } catch {}
+  try {
+    await api.post("/consents", tok, {
+      email,
+      consent_type: type,
+      consent_version: CONSENT_VERSION,
+      granted: !!granted,
+      user_agent: (typeof navigator !== "undefined" ? navigator.userAgent : "")?.slice(0,300) || null,
+      metadata: metadata || null,
+    });
+  } catch(e){ console.error("logConsent", type, e); }
+}
 
 /* ── BRAND ───────────────────────────────────────────────── */
 const B = {
@@ -522,21 +556,37 @@ function LoginScreen({ onLogin }) {
 }
 
 
-function RgpdSheet({ onAccept }) {
+function RgpdSheet({ dob, onAccept }) {
+  const minor    = isMinor(dob);
+  const parental = needsParental(dob);
   const [c,setC] = useState({analytics:false,marketing:false});
+  const [parentEmail,setParentEmail] = useState("");
+  const [parentOk,setParentOk]       = useState(false);
+  const parentValid = !parental || (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(parentEmail.trim()) && parentOk);
+
   const items = [
-    {key:"essential",label:"Fonctionnement de l'app",  desc:"Billet, authentification, sécurité",locked:true},
-    {key:"analytics",label:"Amélioration de l'app",    desc:"Statistiques d'usage anonymisées"},
-    {key:"marketing",label:"Offres et actualités",     desc:"Promotions et nouvelles du club"},
+    {key:"essential",label:"Fonctionnement de l'app",desc:"Billet, authentification, sécurité",locked:true},
+    {key:"analytics",label:"Amélioration de l'app",  desc:"Statistiques d'usage anonymisées"},
   ];
+
+  function accept(){
+    if(!parentValid) return;
+    onAccept({
+      analytics: c.analytics,
+      marketing: minor ? false : c.marketing,
+      parentalEmail: parental ? parentEmail.trim() : null,
+    });
+  }
+
   return <div style={{position:"fixed",inset:0,background:"#000000d8",zIndex:999,display:"flex",alignItems:"flex-end"}}>
-    <div style={{background:B.nightL,borderRadius:"22px 22px 0 0",padding:"24px 20px 44px",width:"100%",border:`1px solid ${B.nightB}`}}>
+    <div style={{background:B.nightL,borderRadius:"22px 22px 0 0",padding:"24px 20px 44px",width:"100%",maxWidth:430,margin:"0 auto",border:`1px solid ${B.nightB}`,maxHeight:"92vh",overflowY:"auto"}}>
       <div style={{width:36,height:4,background:B.nightB,borderRadius:2,margin:"0 auto 20px"}}/>
       <div style={{fontSize:10,color:B.day,fontWeight:700,letterSpacing:2,marginBottom:6}}>🔒 RGPD · ART. 13</div>
       <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,marginBottom:10,color:B.white}}>Tes données t'appartiennent</div>
       <div style={{fontSize:12,color:B.muted,lineHeight:1.8,marginBottom:18}}>Le Spacer's Toulouse Volley traite tes données pour cette app. Aucune donnée n'est vendue. Tu peux retirer ton consentement depuis Profil à tout moment.</div>
-      {items.map((item,i,arr)=>(
-        <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none"}}>
+
+      {items.map(item=>(
+        <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:`1px solid ${B.nightB}`}}>
           <div>
             <div style={{fontSize:13,fontWeight:700,color:B.white}}>{item.label}{item.locked&&<span style={{fontSize:10,color:B.muted}}> · requis</span>}</div>
             <div style={{fontSize:11,color:B.muted,marginTop:2}}>{item.desc}</div>
@@ -547,7 +597,42 @@ function RgpdSheet({ onAccept }) {
           </div>
         </div>
       ))}
-      <button onClick={()=>onAccept(c)} style={{width:"100%",marginTop:20,padding:"15px",background:B.day,border:"none",borderRadius:14,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1}}>
+
+      {/* Offres & actualités : masqué pour les mineurs (pas de marketing aux <18 ans) */}
+      {minor ? (
+        <div style={{padding:"13px 0",borderBottom:`1px solid ${B.nightB}`}}>
+          <div style={{fontSize:13,fontWeight:700,color:B.muted}}>Offres et actualités</div>
+          <div style={{fontSize:11,color:B.muted,marginTop:2}}>Indisponible pour les moins de 18 ans.</div>
+        </div>
+      ) : (
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:`1px solid ${B.nightB}`}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:B.white}}>Offres et actualités</div>
+            <div style={{fontSize:11,color:B.muted,marginTop:2}}>Promotions et nouvelles du club</div>
+          </div>
+          <div onClick={()=>setC(p=>({...p,marketing:!p.marketing}))}
+            style={{width:46,height:26,borderRadius:13,background:c.marketing?B.green:B.nightB,cursor:"pointer",position:"relative",transition:"background .25s",flexShrink:0,marginLeft:12}}>
+            <div style={{position:"absolute",top:3,left:c.marketing?22:3,width:20,height:20,borderRadius:"50%",background:B.white,transition:"left .25s"}}/>
+          </div>
+        </div>
+      )}
+
+      {/* Consentement parental obligatoire pour les moins de 15 ans (loi I&L art. 7-1) */}
+      {parental && (
+        <div style={{background:`${B.day}10`,border:`1px solid ${B.day}30`,borderRadius:12,padding:"12px 14px",marginTop:16}}>
+          <div style={{fontSize:12,fontWeight:700,color:B.day,marginBottom:6}}>👪 Accord d'un parent requis</div>
+          <div style={{fontSize:11,color:B.muted,lineHeight:1.6,marginBottom:10}}>Tu as moins de 15 ans : la loi demande l'accord d'un parent ou tuteur. Indique son email et coche la case.</div>
+          <input type="email" value={parentEmail} onChange={e=>setParentEmail(e.target.value)} placeholder="Email du parent/tuteur"
+            style={{width:"100%",padding:"11px 13px",background:B.night,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.white,fontFamily:"inherit",fontSize:13,outline:"none",marginBottom:10,colorScheme:"dark"}}/>
+          <label style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:11,color:B.muted,lineHeight:1.5,cursor:"pointer"}}>
+            <input type="checkbox" checked={parentOk} onChange={e=>setParentOk(e.target.checked)} style={{marginTop:2,flexShrink:0}}/>
+            <span>Je confirme être le parent/tuteur et autoriser le traitement des données de mon enfant.</span>
+          </label>
+        </div>
+      )}
+
+      <button onClick={accept} disabled={!parentValid}
+        style={{width:"100%",marginTop:20,padding:"15px",background:parentValid?B.day:B.nightB,border:"none",borderRadius:14,color:parentValid?B.night:B.muted,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:parentValid?"pointer":"default",letterSpacing:1}}>
         ENTRER DANS L'UNIVERS ✦
       </button>
     </div>
@@ -802,6 +887,19 @@ function ScreenAccueil({ abonne, matchs }) {
       <span style={{fontSize:14,color:B.day,fontWeight:700}}>↗</span>
     </a>
 
+    {/* Équipe pro */}
+    <a href={EQUIPE_PRO_URL} target="_blank" rel="noopener noreferrer"
+       style={{textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"space-between",background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,padding:"12px 14px",marginTop:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:18}}>🏐</span>
+        <div>
+          <div style={{fontSize:12,fontWeight:700,color:B.white}}>L'équipe pro</div>
+          <div style={{fontSize:11,color:B.muted}}>Découvrir l'effectif et le staff</div>
+        </div>
+      </div>
+      <span style={{fontSize:14,color:B.day,fontWeight:700}}>↗</span>
+    </a>
+
     {/* Améliorer l'expérience abonné (feedback) */}
     <div style={{background:`linear-gradient(135deg,${B.day}10,${B.nightLL})`,border:`1px solid ${B.day}30`,borderRadius:14,padding:14,marginTop:16}}>
       <div style={{fontSize:13,fontWeight:800,color:B.white,marginBottom:3}}>💡 Améliorer l'expérience abonné</div>
@@ -971,6 +1069,12 @@ function ScreenMatchs({ matchs }) {
           <div style={{flex:1,fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:11,textAlign:"center",color:B.white,lineHeight:1.3}}>{m.away}</div>
         </div>
         <div style={{padding:"0 14px 10px",fontSize:10,color:B.muted}}>📍 {m.venue}</div>
+        {tab==="next" && isHome && (
+          <a href={BILLETTERIE_URL} target="_blank" rel="noopener noreferrer"
+             style={{textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,margin:"0 14px 12px",padding:"10px",borderRadius:10,background:B.day,color:B.night,fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:11}}>
+            🎟️ Acheter des places <span>↗</span>
+          </a>
+        )}
       </div>;
     })}
   </div>;
@@ -1321,6 +1425,84 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
+function MesConsentements({ abonne, token }){
+  const [rows,setRows] = useState(null);
+  const [open,setOpen] = useState(false);
+
+  useEffect(()=>{
+    let alive = true;
+    (async()=>{
+      if(!abonne?.email){ setRows([]); return; }
+      try {
+        const data = await api.get("/consents", token, { email:`eq.${abonne.email}`, order:"granted_at.desc" });
+        if(alive) setRows(data||[]);
+      } catch(e){ console.error("consents:", e); if(alive) setRows([]); }
+    })();
+    return ()=>{ alive = false; };
+  },[abonne?.email, token]);
+
+  const META = {
+    rgpd:{ic:"📋",label:"Traitement des données"},
+    analytics:{ic:"📈",label:"Amélioration de l'app"},
+    marketing:{ic:"💌",label:"Offres et actualités"},
+    reglement:{ic:"📜",label:"Charte communauté"},
+    parental:{ic:"👪",label:"Accord parental"},
+    photo_tribune:{ic:"📷",label:"Photo tribune"},
+    data_export:{ic:"📤",label:"Export de mes données"},
+    deletion_request:{ic:"🗑️",label:"Demande de suppression"},
+    deletion_cancelled:{ic:"↺",label:"Annulation de suppression"},
+  };
+  const PRIMARY = ["rgpd","analytics","marketing"];
+  const fmtD  = s => new Date(s).toLocaleDateString("fr-FR");
+  const fmtDT = s => new Date(s).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+  if(rows === null) return (
+    <div style={{marginBottom:18}}>
+      <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🗂️ Historique de mes consentements</div>
+      <div style={{fontSize:11,color:B.muted,padding:"0 2px"}}>Chargement…</div>
+    </div>
+  );
+
+  const latest = {};
+  for(const c of rows){ if(!latest[c.consent_type]) latest[c.consent_type] = c; }
+
+  return <div style={{marginBottom:18}}>
+    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🗂️ Historique de mes consentements</div>
+    <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,overflow:"hidden"}}>
+      {PRIMARY.map((type,i)=>{
+        const c = latest[type]; const m = META[type];
+        return <div key={type} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",borderBottom:i<PRIMARY.length-1?`1px solid ${B.nightB}`:"none"}}>
+          <span style={{fontSize:14}}>{m.ic}</span>
+          <span style={{flex:1,fontSize:12,color:B.white}}>{m.label}</span>
+          {c ? <span style={{fontSize:10,color:B.muted,whiteSpace:"nowrap"}}>
+                 <span style={{color:c.granted?B.green:B.red,fontWeight:700}}>{c.granted?"✓":"✗"}</span> v{c.consent_version} · {fmtD(c.granted_at)}
+               </span>
+             : <span style={{fontSize:10,color:B.muted}}>—</span>}
+        </div>;
+      })}
+      {rows.length>0 && (
+        <div onClick={()=>setOpen(o=>!o)} style={{padding:"10px 14px",borderTop:`1px solid ${B.nightB}`,cursor:"pointer",fontSize:11,color:B.day,fontWeight:700}}>
+          {open ? "▾ Masquer l'historique" : `▸ Voir tout l'historique (${rows.length})`}
+        </div>
+      )}
+      {open && (
+        <div style={{maxHeight:220,overflowY:"auto",background:B.night}}>
+          {rows.map((c,i)=>{
+            const m = META[c.consent_type] || {ic:"•",label:c.consent_type};
+            return <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderBottom:`1px solid ${B.nightLL}`,fontSize:10,color:B.muted}}>
+              <span style={{color:c.granted?B.green:B.red,fontWeight:700}}>{c.granted?"✓":"✗"}</span>
+              <span>{m.ic}</span>
+              <span style={{flex:1,color:B.white,fontWeight:600}}>{m.label}</span>
+              <span style={{whiteSpace:"nowrap"}}>v{c.consent_version} · {fmtDT(c.granted_at)}</span>
+            </div>;
+          })}
+        </div>
+      )}
+    </div>
+    <div style={{fontSize:10,color:B.muted,lineHeight:1.5,marginTop:8,padding:"0 2px"}}>Journal conservé comme preuve (RGPD art. 7.1). Les consentements essentiels se retirent en supprimant le compte.</div>
+  </div>;
+}
+
 function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin, onReplayTuto }) {
   const [showExport,setShowExport] = useState(false);
   const ambass = getAmbass(abonne?.nb_filleuls||0);
@@ -1363,13 +1545,22 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
   }
 
   async function saveRgpd(newRgpd) {
+    const prev = rgpd || {};
     setRgpd(newRgpd);
+    const patch = {
+      rgpd_essentiel: true,
+      rgpd_analytics: newRgpd.analytics,
+      rgpd_marketing: newRgpd.marketing,
+      rgpd_date: new Date().toISOString(),
+      consent_version: CONSENT_VERSION,
+    };
     try {
-      await api.patch(`/abonnes?id=eq.${abonne.id}`, token, {
-        rgpd_analytics: newRgpd.analytics,
-        rgpd_marketing: newRgpd.marketing,
-      });
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, patch);
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if(row){ localStorage.setItem("spacers_abonne", JSON.stringify(row)); onUpdate && onUpdate(row); }
     } catch(e) { console.error(e); }
+    if(newRgpd.analytics !== prev.analytics) logConsent(abonne.email, "analytics", newRgpd.analytics);
+    if(newRgpd.marketing !== prev.marketing) logConsent(abonne.email, "marketing", newRgpd.marketing);
   }
 
   // Parrainage : code copiable + liens club
@@ -1472,7 +1663,7 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
         {key:"essential",label:"Fonctionnement de l'app",locked:true,desc:"Ta connexion et les données de ton abonnement. Indispensable, ne peut pas être désactivé."},
         {key:"analytics",label:"Amélioration de l'app",desc:"Statistiques d'usage anonymes (écrans consultés, bugs) pour améliorer l'app. Optionnel."},
         {key:"marketing",label:"Offres et actualités",desc:"Recevoir par email les offres, nouveautés et invitations du club. Optionnel."},
-      ].map((item,i,arr)=>(
+      ].filter(item=>!(item.key==="marketing" && isMinor(abonne?.date_naissance))).map((item,i,arr)=>(
         <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none"}}>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:B.white}}>{item.label}</div>
@@ -1486,11 +1677,17 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
       ))}
     </div>
 
+    {isMinor(abonne?.date_naissance) && (
+      <div style={{fontSize:10,color:B.muted,lineHeight:1.5,marginBottom:14,padding:"0 2px"}}>« Offres et actualités » est indisponible pour les moins de 18 ans.</div>
+    )}
+
+    <MesConsentements abonne={abonne} token={token} />
+
     <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,overflow:"hidden",marginBottom:18}}>
       {[
-        {icon:"📥",label:"Exporter mes données (Art. 20)",action:()=>setShowExport(true)},
-        {icon:"✉️",label:"Contacter le DPO",action:()=>{}},
-        {icon:"🗑️",label:"Supprimer mon compte",action:()=>{},danger:true},
+        {icon:"📥",label:"Exporter mes données (Art. 20)",action:()=>{ logConsent(abonne?.email,"data_export",true); setShowExport(true); }},
+        {icon:"✉️",label:"Contacter le DPO",action:()=>{ window.location.href = `mailto:${DPO_EMAIL}?subject=${encodeURIComponent("Demande RGPD")}`; }},
+        {icon:"🗑️",label:"Supprimer mon compte",action:()=>{ window.location.href = `mailto:${DPO_EMAIL}?subject=${encodeURIComponent("Demande de suppression de compte")}&body=${encodeURIComponent("Bonjour,\n\nJe souhaite demander la suppression de mon compte abonné et de mes données personnelles.\n\nMerci.")}`; },danger:true},
       ].map((it,i,arr)=>(
         <button key={i} onClick={it.action} style={{width:"100%",padding:"13px 14px",background:"none",border:"none",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none",color:it.danger?B.red:B.white,fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
           <span style={{fontSize:15}}>{it.icon}</span>{it.label}
@@ -1878,6 +2075,38 @@ export default function App() {
   const finishTuto      = ()=>{ setShowTuto(false);      markTutoSeen("tuto_vu"); };
   const finishTutoGamif = ()=>{ setShowTutoGamif(false); markTutoSeen("tuto_gamif_vu"); };
 
+  // Ré-acceptation forcée : profil complété mais version de consentement absente/obsolète.
+  useEffect(()=>{
+    if(abonne && abonne.profil_complete && abonne.consent_version !== CONSENT_VERSION) setShowRgpd(true);
+  },[abonne]);
+
+  // Enregistre le consentement : DB + état local + journal d'audit `consents`.
+  async function acceptConsent(c){
+    setRgpd({ essential:true, analytics:c.analytics, marketing:c.marketing });
+    setShowRgpd(false);
+    if(!abonne) return;
+    const email = abonne.email;
+    const patch = {
+      rgpd_essentiel: true,
+      rgpd_analytics: c.analytics,
+      rgpd_marketing: c.marketing,
+      rgpd_date: new Date().toISOString(),
+      consent_version: CONSENT_VERSION,
+    };
+    const optimistic = { ...abonne, ...patch };
+    localStorage.setItem("spacers_abonne", JSON.stringify(optimistic));
+    setAbonne(optimistic);
+    let tok = SUPA_ANON;
+    try { tok = JSON.parse(localStorage.getItem("sb_session")||"null")?.access_token || SUPA_ANON; } catch {}
+    try { await api.patch(`/abonnes?id=eq.${abonne.id}`, tok, patch); }
+    catch(e){ console.error("acceptConsent patch:", e); }
+    // Journal d'audit (best-effort)
+    logConsent(email, "rgpd", true);
+    logConsent(email, "analytics", c.analytics);
+    logConsent(email, "marketing", c.marketing);
+    if(c.parentalEmail) logConsent(email, "parental", true, { parent_email:c.parentalEmail, age_band:"under_15" });
+  }
+
   const CSS = `
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@400;600;700;800&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;font-family:Inter,'Segoe UI',sans-serif}
@@ -1907,7 +2136,6 @@ export default function App() {
           const token = sess?.access_token || SUPA_ANON;
           const matchsData = await api.get("/matchs", token, { order:"date_match.asc", limit:10 });
           setMatchs(matchsData||[]);
-          if(!ab.rgpd_analytics && !ab.rgpd_marketing) setShowRgpd(true);
         } catch(e) {
           localStorage.removeItem("spacers_abonne");
           localStorage.removeItem("sb_session");
@@ -1932,7 +2160,6 @@ export default function App() {
       if(ab) {
         setAbonne(ab);
         setRgpd({ essential:true, analytics:ab.rgpd_analytics, marketing:ab.rgpd_marketing });
-        if(!ab.rgpd_analytics && !ab.rgpd_marketing) setShowRgpd(true);
       }
       setMatchs(matchsData||[]);
     } catch(e) {
@@ -1949,7 +2176,6 @@ export default function App() {
       const matchsData = await api.get("/matchs", SUPA_ANON, { order:"date_match.asc", limit:10 });
       setMatchs(matchsData||[]);
     } catch(e) { console.error(e); }
-    if(!abonneData.rgpd_analytics && !abonneData.rgpd_marketing) setShowRgpd(true);
     setLoading(false);
   }
 
@@ -2029,7 +2255,7 @@ export default function App() {
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
-      {showRgpd && <RgpdSheet onAccept={c=>{setRgpd(c);setShowRgpd(false);}}/>}
+      {showRgpd && <RgpdSheet dob={abonne?.date_naissance} onAccept={acceptConsent}/>}
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
       {showTuto && <TutoOnboarding onClose={finishTuto}/>}
       {showTutoGamif && <TutoGamification onClose={finishTutoGamif}/>}
