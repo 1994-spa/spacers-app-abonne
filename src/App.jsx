@@ -1234,6 +1234,96 @@ function SetPasswordScreen({ flow, onLogin }) {
 /* ═══════════════════════════════════════════════════════════
    APP ROOT
 ══════════════════════════════════════════════════════════════ */
+/* ── ONBOARDING (complétion de profil obligatoire) ─────────── */
+function OnboardingScreen({ abonne, token, onComplete }) {
+  const [civilite,setCivilite]   = useState(abonne?.civilite || "");
+  const [prenom,setPrenom]       = useState(abonne?.prenom || "");
+  const [nom,setNom]             = useState(abonne?.nom || "");
+  const [naissance,setNaissance] = useState(abonne?.date_naissance || "");
+  const [tel,setTel]             = useState(abonne?.telephone || "");
+  const [rue,setRue]             = useState(abonne?.adresse_rue || "");
+  const [cp,setCp]               = useState(abonne?.code_postal || "");
+  const [ville,setVille]         = useState(abonne?.ville || "");
+  const [err,setErr]             = useState("");
+  const [loading,setLoading]     = useState(false);
+
+  const today = new Date().toISOString().slice(0,10);
+
+  async function submit() {
+    setErr("");
+    if(!civilite)                          return setErr("Choisis ta civilité.");
+    if(!prenom.trim() || !nom.trim())      return setErr("Indique ton prénom et ton nom.");
+    if(!naissance)                         return setErr("Indique ta date de naissance.");
+    if(!/^[0-9 +().-]{8,}$/.test(tel.trim())) return setErr("Numéro de téléphone invalide.");
+    if(!rue.trim())                        return setErr("Indique ton adresse.");
+    if(!/^[0-9]{5}$/.test(cp.trim()))      return setErr("Code postal invalide (5 chiffres).");
+    if(!ville.trim())                      return setErr("Indique ta ville.");
+    setLoading(true);
+    try {
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, {
+        civilite, prenom:prenom.trim(), nom:nom.trim(),
+        date_naissance:naissance, telephone:tel.trim(),
+        adresse_rue:rue.trim(), code_postal:cp.trim(), ville:ville.trim(),
+        profil_complete:true,
+      });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if(!row) throw new Error("no row returned");
+      localStorage.setItem("spacers_abonne", JSON.stringify(row));
+      onComplete(row);
+    } catch(e) {
+      console.error(e);
+      setErr("Échec de l'enregistrement. Réessaie.");
+      setLoading(false);
+    }
+  }
+
+  const field = {width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.08)",border:`1.5px solid ${B.nightB}`,borderRadius:11,color:B.white,fontFamily:"inherit",fontSize:14,outline:"none",colorScheme:"dark"};
+  const lbl   = {fontSize:11,color:B.muted,fontWeight:700,marginBottom:6,display:"block"};
+
+  return (
+    <div style={{minHeight:"100vh",padding:"28px 22px 40px",position:"relative",zIndex:1,overflowY:"auto",maxWidth:430,margin:"0 auto"}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><SpacersLogo height={60} vertical/></div>
+      <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:18,color:B.white,textAlign:"center",marginBottom:6}}>Bienvenue {abonne?.prenom} !</div>
+      <div style={{fontSize:13,color:B.muted,textAlign:"center",lineHeight:1.6,marginBottom:18}}>Complète ton profil pour accéder à ton espace abonné.</div>
+
+      <div style={{background:`${B.day}10`,border:`1px solid ${B.day}30`,borderRadius:12,padding:"10px 12px",marginBottom:20}}>
+        <div style={{fontSize:11,color:B.day,lineHeight:1.6}}>🔒 Le Spacer's Toulouse Volley utilise ces informations pour gérer ton abonnement, t'informer et te souhaiter ton anniversaire. Aucune donnée n'est revendue.</div>
+      </div>
+
+      <label style={lbl}>Civilité</label>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        {["M.","Mme"].map(c=>(
+          <button key={c} onClick={()=>setCivilite(c)} style={{flex:1,padding:"11px",borderRadius:11,border:`1.5px solid ${civilite===c?B.day:B.nightB}`,background:civilite===c?`${B.day}20`:"transparent",color:civilite===c?B.day:B.muted,fontFamily:"inherit",fontSize:14,fontWeight:700,cursor:"pointer"}}>{c}</button>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:16}}>
+        <div style={{flex:1}}><label style={lbl}>Prénom</label><input value={prenom} onChange={e=>setPrenom(e.target.value)} style={field}/></div>
+        <div style={{flex:1}}><label style={lbl}>Nom</label><input value={nom} onChange={e=>setNom(e.target.value)} style={field}/></div>
+      </div>
+
+      <label style={lbl}>Date de naissance</label>
+      <input type="date" value={naissance} max={today} onChange={e=>setNaissance(e.target.value)} style={{...field,marginBottom:16}}/>
+
+      <label style={lbl}>Téléphone</label>
+      <input type="tel" value={tel} onChange={e=>setTel(e.target.value)} placeholder="06 12 34 56 78" style={{...field,marginBottom:16}}/>
+
+      <label style={lbl}>Adresse postale</label>
+      <input value={rue} onChange={e=>setRue(e.target.value)} placeholder="N° et rue" style={{...field,marginBottom:10}}/>
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <input value={cp} onChange={e=>setCp(e.target.value)} placeholder="Code postal" inputMode="numeric" maxLength={5} style={{...field,flex:"0 0 38%"}}/>
+        <input value={ville} onChange={e=>setVille(e.target.value)} placeholder="Ville" style={{...field,flex:1}}/>
+      </div>
+
+      {err && <div style={{color:B.red,fontSize:12,marginBottom:12,textAlign:"center"}}>{err}</div>}
+
+      <button onClick={submit} disabled={loading} style={{width:"100%",padding:"14px",background:B.day,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:13,fontWeight:700,cursor:loading?"default":"pointer",opacity:loading?.7:1}}>
+        {loading ? "Enregistrement…" : "Valider et entrer"}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [session,setSession] = useState(null);
   const [abonne,setAbonne]   = useState(null);
@@ -1349,6 +1439,17 @@ export default function App() {
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
       <style>{CSS}</style>
       <LoginScreen onLogin={handleLogin}/>
+    </div>
+  );
+
+  if(!abonne.profil_complete) return (
+    <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
+      <style>{CSS}</style>
+      <Stars/>
+      <OnboardingScreen abonne={abonne} token={SUPA_ANON} onComplete={(row)=>{
+        setAbonne(row);
+        setRgpd({ essential:true, analytics:row.rgpd_analytics||false, marketing:row.rgpd_marketing||false });
+      }}/>
     </div>
   );
 
