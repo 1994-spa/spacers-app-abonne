@@ -1020,6 +1020,18 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
   const [showExport,setShowExport] = useState(false);
   const ambass = getAmbass(abonne?.nb_filleuls||0);
+  const [naissance,setNaissance] = useState(abonne?.date_naissance || "");
+  const [savedN,setSavedN] = useState(false);
+
+  async function saveNaissance(v) {
+    setNaissance(v);
+    setSavedN(false);
+    try {
+      await api.patch(`/abonnes?id=eq.${abonne.id}`, token, { date_naissance: v || null });
+      setSavedN(true);
+      setTimeout(()=>setSavedN(false), 2200);
+    } catch(e) { console.error(e); }
+  }
 
   async function saveRgpd(newRgpd) {
     setRgpd(newRgpd);
@@ -1056,6 +1068,17 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout }) {
             <div style={{fontSize:14}}>{ic}</div><div style={{fontSize:9}}>{l}</div>
           </button>
         ))}
+      </div>
+    </div>
+
+    {/* Date de naissance */}
+    <div style={{fontSize:9,color:B.muted,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>🎂 Ma date de naissance</div>
+    <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:14,marginBottom:18}}>
+      <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Renseigne-la pour recevoir une petite surprise du club le jour J 🎉</div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <input type="date" value={naissance} max={new Date().toISOString().slice(0,10)} onChange={e=>saveNaissance(e.target.value)}
+          style={{flex:1,background:B.night,border:`1px solid ${B.nightB}`,borderRadius:9,padding:"10px 12px",color:B.white,fontFamily:"inherit",fontSize:13,colorScheme:"dark"}} />
+        {savedN && <span style={{fontSize:11,color:B.green,fontWeight:700,whiteSpace:"nowrap"}}>✓ Enregistré</span>}
       </div>
     </div>
 
