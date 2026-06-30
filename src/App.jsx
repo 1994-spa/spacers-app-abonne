@@ -745,7 +745,8 @@ function ScreenBillet({ abonne, matchs }) {
     {mode==="buvette" && <div>
       <div style={{background:`linear-gradient(135deg,${B.green}18,${B.nightLL})`,border:`1px solid ${B.green}40`,borderRadius:14,padding:16,marginBottom:12}}>
         <div style={{fontSize:9,color:B.green,fontWeight:700,letterSpacing:1.5,marginBottom:5}}>🔗 QR BUVETTE · 1€ = 1 PT</div>
-        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.green}}>Happy Hour · −20% jusqu'à 19h</div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.green}}>−10% sur les boissons</div>
+        <div style={{fontSize:10,color:B.muted,marginTop:4}}>Uniquement les boissons (hors restauration)</div>
       </div>
       <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:16}}>
         <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Même QR que ton billet · présente-le à la caisse</div>
@@ -761,7 +762,7 @@ function ScreenBillet({ abonne, matchs }) {
     {mode==="boutique" && <div>
       <div style={{background:`linear-gradient(135deg,${B.dayL}18,${B.nightLL})`,border:`1px solid ${B.dayL}40`,borderRadius:14,padding:16,marginBottom:12}}>
         <div style={{fontSize:9,color:B.dayL,fontWeight:700,letterSpacing:1.5,marginBottom:5}}>🔗 QR BOUTIQUE · 1€ = 1 PT</div>
-        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.dayL}}>−15% sur tout le merch abonné</div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.dayL}}>−10% sur toute la boutique</div>
       </div>
       <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,padding:16}}>
         <div style={{fontSize:11,color:B.muted,marginBottom:10}}>Même QR que ton billet · présente-le à la caisse</div>
