@@ -20,7 +20,8 @@ const CLASSEMENT_URL = "https://www.flashscore.fr/volleyball/france/ligue-a/#/Wz
 const BILLETTERIE_URL = "https://billetterie.spacerstoulouse.fr/";
 const EQUIPE_PRO_URL  = "https://www.spacerstoulouse.fr/equipe-pro/";
 const CONSENT_VERSION = "1.0"; // bump à chaque modif substantielle de la politique -> force la ré-acceptation
-const DPO_EMAIL       = "rgpd@spacerstoulouse.fr";
+const DPO_EMAIL       = "contact@spacerstoulouse.fr";
+const CONFIDENTIALITE_URL = "/confidentialite.html";
 const socialImg = (p) => {
   const b = p.image_b64;
   if (b) return b.startsWith("data:") ? b : `data:image/jpeg;base64,${b}`;
@@ -584,6 +585,7 @@ function RgpdSheet({ dob, onAccept }) {
       <div style={{fontSize:10,color:B.day,fontWeight:700,letterSpacing:2,marginBottom:6}}>🔒 RGPD · ART. 13</div>
       <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:17,marginBottom:10,color:B.white}}>Tes données t'appartiennent</div>
       <div style={{fontSize:12,color:B.muted,lineHeight:1.8,marginBottom:18}}>Le Spacer's Toulouse Volley traite tes données pour cette app. Aucune donnée n'est vendue. Tu peux retirer ton consentement depuis Profil à tout moment.</div>
+      <a href={CONFIDENTIALITE_URL} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:B.day,textDecoration:"underline",display:"inline-block",marginBottom:16}}>Lire la politique de confidentialité ↗</a>
 
       {items.map(item=>(
         <div key={item.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"13px 0",borderBottom:`1px solid ${B.nightB}`}}>
@@ -1505,6 +1507,16 @@ function MesConsentements({ abonne, token }){
 
 function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin, onReplayTuto }) {
   const [showExport,setShowExport] = useState(false);
+  const [showDelete,setShowDelete] = useState(false);
+
+  async function requestDeletion(){
+    try {
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, { deletion_requested_at: new Date().toISOString() });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      logConsent(abonne.email, "deletion_request", true);
+      if(row){ localStorage.setItem("spacers_abonne", JSON.stringify(row)); onUpdate && onUpdate(row); }
+    } catch(e){ console.error("requestDeletion:", e); }
+  }
   const ambass = getAmbass(abonne?.nb_filleuls||0);
 
   // Coordonnées éditables
@@ -1686,8 +1698,9 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
     <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:14,overflow:"hidden",marginBottom:18}}>
       {[
         {icon:"📥",label:"Exporter mes données (Art. 20)",action:()=>{ logConsent(abonne?.email,"data_export",true); setShowExport(true); }},
+        {icon:"📄",label:"Politique de confidentialité",action:()=>window.open(CONFIDENTIALITE_URL,"_blank","noopener")},
         {icon:"✉️",label:"Contacter le DPO",action:()=>{ window.location.href = `mailto:${DPO_EMAIL}?subject=${encodeURIComponent("Demande RGPD")}`; }},
-        {icon:"🗑️",label:"Supprimer mon compte",action:()=>{ window.location.href = `mailto:${DPO_EMAIL}?subject=${encodeURIComponent("Demande de suppression de compte")}&body=${encodeURIComponent("Bonjour,\n\nJe souhaite demander la suppression de mon compte abonné et de mes données personnelles.\n\nMerci.")}`; },danger:true},
+        {icon:"🗑️",label:"Supprimer mon compte",action:()=>setShowDelete(true),danger:true},
       ].map((it,i,arr)=>(
         <button key={i} onClick={it.action} style={{width:"100%",padding:"13px 14px",background:"none",border:"none",borderBottom:i<arr.length-1?`1px solid ${B.nightB}`:"none",color:it.danger?B.red:B.white,fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:10,textAlign:"left"}}>
           <span style={{fontSize:15}}>{it.icon}</span>{it.label}
@@ -1716,9 +1729,19 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
       <div style={{background:B.nightL,borderRadius:"20px 20px 0 0",padding:"24px 18px 44px",width:"100%",border:`1px solid ${B.nightB}`}}>
         <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:14,color:B.white,marginBottom:14}}>📥 Export RGPD · Art. 20</div>
         <pre style={{background:B.night,borderRadius:10,padding:12,fontSize:10,color:B.muted,overflowX:"auto",marginBottom:16,lineHeight:1.7}}>
-{JSON.stringify({sujet:`${abonne?.prenom} ${abonne?.nom}`,email:abonne?.email,club:"Spacer's Toulouse Volley",saison:abonne?.saison,export:new Date().toISOString(),consentements:rgpd,dpo:"rgpd@spacerstoulouse.fr"},null,2)}
+{JSON.stringify({sujet:`${abonne?.prenom} ${abonne?.nom}`,email:abonne?.email,club:"Spacer's Toulouse Volley",saison:abonne?.saison,export:new Date().toISOString(),consentements:rgpd,dpo:DPO_EMAIL},null,2)}
         </pre>
         <button onClick={()=>setShowExport(false)} style={{width:"100%",padding:"12px",background:B.day,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Fermer</button>
+      </div>
+    </div>}
+
+    {showDelete&&<div style={{position:"fixed",inset:0,background:"#000000d8",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{background:B.nightL,border:`1px solid ${B.nightB}`,borderRadius:18,padding:"24px 20px",maxWidth:360,width:"100%"}}>
+        <div style={{fontSize:34,textAlign:"center",marginBottom:12}}>🗑️</div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white,textAlign:"center",marginBottom:10}}>Supprimer mon compte ?</div>
+        <div style={{fontSize:12,color:B.muted,lineHeight:1.7,textAlign:"center",marginBottom:20}}>Ton compte et tes données personnelles seront supprimés définitivement après un délai de 30 jours. Tu peux annuler à tout moment pendant ce délai en te reconnectant.</div>
+        <button onClick={()=>{ setShowDelete(false); requestDeletion(); }} style={{width:"100%",padding:"14px",background:B.red,border:"none",borderRadius:12,color:B.white,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:10}}>Confirmer la suppression</button>
+        <button onClick={()=>setShowDelete(false)} style={{width:"100%",padding:"12px",background:"none",border:`1px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:12,fontWeight:600,cursor:"pointer"}}>Annuler</button>
       </div>
     </div>}
   </div>;
@@ -2036,6 +2059,39 @@ function OnboardingScreen({ abonne, token, onComplete }) {
   );
 }
 
+/* ── SCREEN: RÉCUPÉRATION (compte en cours de suppression) ─── */
+function RecoveryScreen({ abonne, token, onCancel, onLogout }){
+  const [loading,setLoading] = useState(false);
+  const sched   = abonne?.deletion_scheduled_for ? new Date(abonne.deletion_scheduled_for) : null;
+  const dateStr = sched ? sched.toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric"}) : "prochainement";
+
+  async function cancel(){
+    setLoading(true);
+    try {
+      const rows = await api.patch(`/abonnes?id=eq.${abonne.id}`, token, { deletion_requested_at:null });
+      const row  = Array.isArray(rows) ? rows[0] : rows;
+      logConsent(abonne.email, "deletion_cancelled", true);
+      const next = row || { ...abonne, deletion_requested_at:null, deletion_scheduled_for:null };
+      localStorage.setItem("spacers_abonne", JSON.stringify(next));
+      onCancel(next);
+    } catch(e){ console.error("cancelDeletion:", e); setLoading(false); }
+  }
+
+  return <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white,position:"relative"}}>
+    <Stars/>
+    <div style={{position:"relative",zIndex:1,padding:"24px",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",minHeight:"100vh",justifyContent:"center"}}>
+      <div style={{fontSize:46,marginBottom:16}}>🗑️</div>
+      <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:20,marginBottom:14}}>Suppression programmée</div>
+      <div style={{fontSize:13,color:B.muted,lineHeight:1.7,marginBottom:8,maxWidth:320}}>Ton compte et tes données personnelles seront définitivement supprimés le <b style={{color:B.white}}>{dateStr}</b>.</div>
+      <div style={{fontSize:12,color:B.muted,lineHeight:1.7,marginBottom:28,maxWidth:320}}>Tu peux encore tout annuler — ton espace abonné repartira comme avant.</div>
+      <button onClick={cancel} disabled={loading} style={{width:"100%",maxWidth:320,padding:"15px",background:B.day,border:"none",borderRadius:14,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:loading?"default":"pointer",letterSpacing:1,opacity:loading?.7:1,marginBottom:14}}>
+        {loading ? "…" : "ANNULER LA SUPPRESSION"}
+      </button>
+      <button onClick={onLogout} style={{background:"none",border:"none",color:B.muted,fontSize:12,fontWeight:600,cursor:"pointer",textDecoration:"underline"}}>Me déconnecter</button>
+    </div>
+  </div>;
+}
+
 export default function App() {
   const [session,setSession] = useState(null);
   const [abonne,setAbonne]   = useState(null);
@@ -2211,6 +2267,13 @@ export default function App() {
 
   const sbSession = (()=>{ try { return JSON.parse(localStorage.getItem("sb_session")||"null"); } catch { return null; } })();
   const sbToken = sbSession?.access_token || SUPA_ANON;
+
+  if(abonne.deletion_requested_at) return (
+    <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
+      <style>{CSS}</style>
+      <RecoveryScreen abonne={abonne} token={sbToken} onCancel={setAbonne} onLogout={handleLogout}/>
+    </div>
+  );
 
   if(!abonne.profil_complete) return (
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh",background:B.night,color:B.white}}>
