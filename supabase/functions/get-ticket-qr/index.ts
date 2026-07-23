@@ -81,14 +81,20 @@ Deno.serve(async (req) => {
     if (!barcode) return json({ error: "no_ticket" }, 404);
 
     // 5) Enrichissement best-effort via Tickie (nom / catégorie / place).
-    //    On liste les billets de l'événement et on retrouve le bon par barcode.
+    //    Recherche CIBLÉE par code-barres : Vivenu filtre côté serveur et
+    //    renvoie la seule ligne concernée. (Avant : on listait les 200
+    //    premiers billets de l'événement, ce qui aurait silencieusement
+    //    privé de placement les abonnés au-delà du 200e.)
     //    Si Tickie ne répond pas, on renvoie quand même le QR.
     const headers = { "Authorization": `Bearer ${TICKIE_KEY}`, "Content-Type": "application/json" };
     let ticket: any = null;
     try {
-      const r = await fetch(`${TICKIE_BASE}/tickets?event=${EVENT_ABO}&top=200`, { headers });
+      const url = `${TICKIE_BASE}/tickets?event=${EVENT_ABO}&barcode=${encodeURIComponent(barcode)}`;
+      const r = await fetch(url, { headers });
       if (r.ok) {
         const rows: any[] = (await r.json()).rows ?? [];
+        // Garde-fou : si le filtre était ignoré, on revérifie nous-mêmes
+        // le code-barres plutôt que de servir le placement d'un autre.
         ticket = rows.find((t) => t.barcode === barcode) ?? null;
       }
     } catch (_) { /* enrichissement optionnel */ }
