@@ -1243,7 +1243,28 @@ function ScreenCommunaute({ abonne, token, matchs }) {
   const [input,setInput]     = useState("");
   const [loading,setLoading] = useState(true);
   const [section,setSection] = useState("matchs"); // "matchs" = liste; l'onglet Général ouvre directement la conversation
+  const [signal,setSignal]   = useState(null);     // message en cours de signalement
+  const [signalNote,setSignalNote] = useState(null);
   const bottomRef = useRef(null);
+
+  // Signalement d'un message. Un seul par personne et par message
+  // (contrainte en base) : une seconde tentative renvoie une erreur,
+  // qu'on traduit en message clair plutôt qu'en échec silencieux.
+  async function envoyerSignalement(motif) {
+    const cible = signal; setSignal(null);
+    if(!cible || !abonne?.id) return;
+    try {
+      await api.post("/signalements", token, {
+        message_id: cible.id, rapporteur_id: abonne.id, motif,
+      });
+      setSignalNote("Merci, le club a été alerté.");
+      setMsgs(list=>list.map(x=>x.id===cible.id?{...x,_signale:true}:x));
+    } catch(e) {
+      const deja = String(e?.message||"").includes("409");
+      setSignalNote(deja ? "Tu as déjà signalé ce message." : "Signalement impossible pour l'instant.");
+    }
+    setTimeout(()=>setSignalNote(null), 3200);
+  }
 
   useEffect(()=>{
     // On réutilise le tableau matchs déjà chargé par l'app (fiable), et on calcule l'ouverture des fils côté client (J−15 → J+7, sans cron ni requête séparée).
@@ -1392,22 +1413,29 @@ function ScreenCommunaute({ abonne, token, matchs }) {
             <span style={{fontSize:12}}>Sois le premier à écrire ! 🏐</span>
           </div>
         )}
-        {msgs.map((m,i)=>(
+        {msgs.map((m,i)=>{
+          const auteur = m.auteur_prenom || m.prenom || "Abonné";
+          const mien   = m.abonne_id && abonne?.id && m.abonne_id === abonne.id;
+          return (
           <div key={m.id||i} style={{marginBottom:12,display:"flex",gap:9}}>
             <div style={{width:30,height:30,borderRadius:"50%",background:B.nightB,border:`1.5px solid ${B.nightB}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:B.muted,flexShrink:0}}>
-              {(m.prenom||"?")[0]?.toUpperCase()}
+              {auteur[0]?.toUpperCase()}
             </div>
-            <div style={{flex:1}}>
+            <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                <span style={{fontSize:11,fontWeight:700,color:B.white}}>{m.prenom||"Abonné"}</span>
+                <span style={{fontSize:11,fontWeight:700,color:B.white}}>{auteur}</span>
                 <span style={{fontSize:10,color:B.muted,marginLeft:"auto"}}>{m.created_at?new Date(m.created_at).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):""}</span>
+                {!mien && m.id && (
+                  <button onClick={()=>setSignal({ id:m.id, auteur })} title="Signaler ce message"
+                    style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:12,padding:"0 2px",lineHeight:1}}>⚑</button>
+                )}
               </div>
-              <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:"0 10px 10px 10px",padding:"9px 12px",fontSize:13,color:B.white,lineHeight:1.6}}>
+              <div style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:"0 10px 10px 10px",padding:"9px 12px",fontSize:13,color:B.white,lineHeight:1.6,wordBreak:"break-word"}}>
                 {m.contenu||m.txt}
               </div>
             </div>
           </div>
-        ))}
+        );})}
         <div ref={bottomRef}/>
       </div>
 
@@ -1421,10 +1449,165 @@ function ScreenCommunaute({ abonne, token, matchs }) {
           style={{padding:"11px 16px",background:input.trim()?B.day:B.nightB,border:"none",borderRadius:12,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:12,fontWeight:700,cursor:input.trim()?"pointer":"not-allowed",transition:"all .2s"}}>✦</button>
       </div>
       {input&&<div style={{fontSize:9,color:input.length>250?B.red:B.muted,textAlign:"right",marginTop:4}}>{input.length}/280</div>}
+
+      {/* Confirmation de signalement */}
+      {signalNote && (
+        <div style={{position:"fixed",left:0,right:0,bottom:96,display:"flex",justifyContent:"center",zIndex:998,pointerEvents:"none"}}>
+          <div style={{background:B.nightB,border:`1px solid ${B.day}40`,color:B.white,fontSize:12,padding:"9px 16px",borderRadius:20,maxWidth:320,textAlign:"center"}}>{signalNote}</div>
+        </div>
+      )}
+
+      {/* Choix du motif */}
+      {signal && (
+        <div onClick={()=>setSignal(null)} style={{position:"fixed",inset:0,background:"#000000d8",zIndex:999,display:"flex",alignItems:"flex-end"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:B.nightL,borderRadius:"20px 20px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:430,margin:"0 auto",border:`1px solid ${B.nightB}`}}>
+            <div style={{width:36,height:4,background:B.nightB,borderRadius:2,margin:"0 auto 18px"}}/>
+            <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:15,color:B.white,marginBottom:6}}>Signaler ce message</div>
+            <div style={{fontSize:11,color:B.muted,lineHeight:1.6,marginBottom:16}}>
+              Message de <b style={{color:B.white}}>{signal.auteur}</b>. Le club en sera informé et vérifiera. Merci d'aider à garder les échanges sains.
+            </div>
+            {[
+              ["insultes",   "😠 Insultes ou agressivité"],
+              ["haine",      "🚫 Propos haineux ou discriminatoires"],
+              ["sexuel",     "⚠️ Contenu à caractère sexuel"],
+              ["coordonnees","📵 Demande de coordonnées privées"],
+              ["spam",       "🔁 Spam ou hors-sujet"],
+              ["autre",      "❓ Autre raison"],
+            ].map(([code,label])=>(
+              <button key={code} onClick={()=>envoyerSignalement(code)}
+                style={{width:"100%",textAlign:"left",padding:"12px 14px",marginBottom:8,background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:12.5,cursor:"pointer"}}>{label}</button>
+            ))}
+            <button onClick={()=>setSignal(null)} style={{width:"100%",padding:"11px",marginTop:6,background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>Annuler</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+
+/* ── SCREEN: MODÉRATION (community manager) ──────────────── */
+function ScreenModeration({ abonne, token, onBack }) {
+  const [msgs,setMsgs]   = useState(null);   // null = chargement
+  const [sig,setSig]     = useState([]);
+  const [filtre,setFiltre] = useState("attention"); // attention | tous | masques
+  const [busy,setBusy]   = useState(null);
+  const [err,setErr]     = useState(null);
+
+  async function charger() {
+    try {
+      const [m,s] = await Promise.all([
+        api.get("/messages_communaute", token, { order:"created_at.desc", limit:"200" }),
+        api.get("/signalements", token, { order:"created_at.desc", limit:"300" }),
+      ]);
+      setMsgs(m||[]); setSig(s||[]); setErr(null);
+    } catch(e) {
+      console.error("moderation:", e);
+      setMsgs([]);
+      setErr("Chargement impossible. Vérifie que ton compte a bien le rôle CM.");
+    }
+  }
+  useEffect(()=>{ charger(); },[]);
+
+  async function setStatut(id, statut) {
+    setBusy(id);
+    try {
+      await api.patch(`/messages_communaute?id=eq.${id}`, token, {
+        statut, moderateur_id: abonne.id, updated_at: new Date().toISOString(),
+      });
+      setMsgs(list=>list.map(x=>x.id===id?{...x,statut,moderateur_id:abonne.id}:x));
+    } catch(e) { console.error("setStatut:", e); setErr("Action refusée. Rôle CM manquant ?"); }
+    setBusy(null);
+  }
+
+  const MOTIFS = {
+    insultes:"Insultes", haine:"Propos haineux", sexuel:"Contenu sexuel",
+    coordonnees:"Demande de coordonnées", spam:"Spam", autre:"Autre",
+  };
+  const parMsg = {};
+  for(const s of sig){ (parMsg[s.message_id] = parMsg[s.message_id] || []).push(s); }
+
+  if(msgs===null) return <div style={{padding:16}}><Spinner/></div>;
+
+  const signales = msgs.filter(m=>(m.nb_signalements||0)>0 || m.statut==="masque");
+  const liste = filtre==="attention" ? signales
+              : filtre==="masques"   ? msgs.filter(m=>m.statut==="masque")
+              : msgs;
+
+  return <div style={{padding:16}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:20,padding:"4px 8px 4px 0"}}>←</button>
+      <div style={{flex:1}}>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:16,color:B.white}}>🛡️ Modération</div>
+        <div style={{fontSize:10,color:B.muted,marginTop:1}}>{signales.length} message(s) à examiner</div>
+      </div>
+      <button onClick={charger} style={{background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:10,color:B.day,fontSize:11,fontWeight:700,padding:"7px 11px",cursor:"pointer"}}>↻</button>
+    </div>
+
+    {err && <div style={{background:`${B.red}15`,border:`1px solid ${B.red}40`,borderRadius:10,padding:"10px 12px",fontSize:11,color:B.red,marginBottom:12}}>{err}</div>}
+
+    <div style={{display:"flex",gap:6,marginBottom:16}}>
+      {[["attention","À examiner"],["masques","Masqués"],["tous","Tous"]].map(([id,l])=>(
+        <button key={id} onClick={()=>setFiltre(id)}
+          style={{flex:1,padding:"8px 4px",borderRadius:10,border:`1.5px solid ${filtre===id?B.day:B.nightB}`,background:filtre===id?`${B.day}18`:B.nightLL,color:filtre===id?B.day:B.muted,fontFamily:"inherit",fontWeight:700,fontSize:11,cursor:"pointer"}}>{l}</button>
+      ))}
+    </div>
+
+    {liste.length===0 && (
+      <div style={{textAlign:"center",padding:"36px 16px",color:B.muted,fontSize:13}}>
+        <div style={{fontSize:30,marginBottom:8}}>✨</div>
+        Rien à modérer. Les échanges sont sains.
+      </div>
+    )}
+
+    {liste.map(m=>{
+      const reports = parMsg[m.id]||[];
+      const masque  = m.statut==="masque";
+      return <div key={m.id} style={{background:B.nightLL,border:`1px solid ${masque?B.red+"55":B.nightB}`,borderRadius:14,padding:"12px 14px",marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+          <span style={{fontSize:12,fontWeight:700,color:B.white}}>{m.auteur_prenom||"Abonné"}</span>
+          {m.est_officiel && <span style={{fontSize:9,color:B.day,fontWeight:700}}>OFFICIEL</span>}
+          <span style={{fontSize:10,color:B.muted,marginLeft:"auto"}}>
+            {m.created_at ? new Date(m.created_at).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : ""}
+          </span>
+        </div>
+
+        <div style={{background:B.night,borderRadius:10,padding:"9px 12px",fontSize:13,color:masque?B.muted:B.white,lineHeight:1.6,wordBreak:"break-word",marginBottom:8,textDecoration:masque?"line-through":"none"}}>
+          {m.contenu}
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:reports.length?8:10}}>
+          <span style={{fontSize:10,fontWeight:700,color:masque?B.red:B.green}}>
+            {masque ? "● Masqué" : "● Visible"}
+          </span>
+          {(m.nb_signalements||0)>0 && (
+            <span style={{fontSize:10,color:B.gold,fontWeight:700}}>⚑ {m.nb_signalements} signalement{m.nb_signalements>1?"s":""}</span>
+          )}
+        </div>
+
+        {reports.length>0 && (
+          <div style={{fontSize:10,color:B.muted,marginBottom:10,lineHeight:1.6}}>
+            Motifs : {[...new Set(reports.map(r=>MOTIFS[r.motif]||r.motif))].join(" · ")}
+          </div>
+        )}
+
+        <div style={{display:"flex",gap:8}}>
+          {masque ? (
+            <button disabled={busy===m.id} onClick={()=>setStatut(m.id,"publie")}
+              style={{flex:1,padding:"10px",background:B.green,border:"none",borderRadius:10,color:B.night,fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",opacity:busy===m.id?.6:1}}>RÉTABLIR</button>
+          ) : (
+            <button disabled={busy===m.id} onClick={()=>setStatut(m.id,"masque")}
+              style={{flex:1,padding:"10px",background:B.red,border:"none",borderRadius:10,color:B.white,fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",opacity:busy===m.id?.6:1}}>MASQUER</button>
+          )}
+        </div>
+      </div>;
+    })}
+
+    <div style={{fontSize:10,color:B.muted,lineHeight:1.6,marginTop:14,padding:"0 2px"}}>
+      Un message masqué n'est jamais supprimé : il disparaît des fils mais reste consultable ici. Le masquage est automatique au 2ᵉ signalement, en attendant ta vérification.
+    </div>
+  </div>;
+}
 
 /* ── SCREEN: PROFIL ──────────────────────────────────────── */
 function MesConsentements({ abonne, token }){
@@ -1505,7 +1688,7 @@ function MesConsentements({ abonne, token }){
   </div>;
 }
 
-function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin, onReplayTuto }) {
+function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpenAdmin, onOpenModeration, onReplayTuto }) {
   const [showExport,setShowExport] = useState(false);
   const [showDelete,setShowDelete] = useState(false);
 
@@ -1613,6 +1796,19 @@ function ScreenProfil({ abonne, token, rgpd, setRgpd, onLogout, onUpdate, onOpen
           </div>
         </div>
         <span style={{fontSize:14,color:B.gold,fontWeight:700}}>→</span>
+      </button>
+    )}
+
+    {(abonne?.is_cm || abonne?.is_admin) && (
+      <button onClick={onOpenModeration} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,background:`linear-gradient(135deg,${B.day}18,${B.nightLL})`,border:`1px solid ${B.day}40`,borderRadius:14,padding:"13px 14px",marginBottom:18,cursor:"pointer"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>🛡️</span>
+          <div style={{textAlign:"left"}}>
+            <div style={{fontSize:12,fontWeight:700,color:B.white}}>Modération</div>
+            <div style={{fontSize:11,color:B.muted}}>Messages signalés et masqués</div>
+          </div>
+        </div>
+        <span style={{fontSize:14,color:B.day,fontWeight:700}}>→</span>
       </button>
     )}
     {/* Code parrainage */}
@@ -2313,8 +2509,9 @@ export default function App() {
         {tab==="billet"    && <ScreenBillet abonne={abonne} matchs={matchs}/>}
         {tab==="rewards"   && <ScreenRecompenses abonne={abonne} token={sbToken} onUpdate={setAbonne} onReplay={()=>setShowTutoGamif(true)}/>}
         {tab==="community" && <ScreenCommunaute abonne={abonne} token={token} matchs={matchs}/>}
-        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")} onReplayTuto={()=>setShowTuto(true)}/>}
+        {tab==="profil"    && <ScreenProfil abonne={abonne} token={sbToken} rgpd={rgpd} setRgpd={setRgpd} onLogout={handleLogout} onUpdate={setAbonne} onOpenAdmin={()=>setTab("admin")} onOpenModeration={()=>setTab("moderation")} onReplayTuto={()=>setShowTuto(true)}/>}
         {tab==="admin"     && abonne?.is_admin && <ScreenAdmin abonne={abonne} token={sbToken} onBack={()=>setTab("profil")}/>}
+        {tab==="moderation"&& (abonne?.is_cm||abonne?.is_admin) && <ScreenModeration abonne={abonne} token={sbToken} onBack={()=>setTab("profil")}/>}
       </div>
 
       <Nav tab={tab} setTab={setTab}/>
