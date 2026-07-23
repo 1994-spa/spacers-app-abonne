@@ -1490,17 +1490,20 @@ function ScreenCommunaute({ abonne, token, matchs }) {
 function ScreenModeration({ abonne, token, onBack }) {
   const [msgs,setMsgs]   = useState(null);   // null = chargement
   const [sig,setSig]     = useState([]);
+  const [avert,setAvert] = useState([]);
   const [filtre,setFiltre] = useState("attention"); // attention | tous | masques
   const [busy,setBusy]   = useState(null);
+  const [warn,setWarn]   = useState(null);   // message dont on veut avertir l'auteur
   const [err,setErr]     = useState(null);
 
   async function charger() {
     try {
-      const [m,s] = await Promise.all([
+      const [m,s,v] = await Promise.all([
         api.get("/messages_communaute", token, { order:"created_at.desc", limit:"200" }),
         api.get("/signalements", token, { order:"created_at.desc", limit:"300" }),
+        api.get("/avertissements", token, { order:"created_at.desc", limit:"300" }),
       ]);
-      setMsgs(m||[]); setSig(s||[]); setErr(null);
+      setMsgs(m||[]); setSig(s||[]); setAvert(v||[]); setErr(null);
     } catch(e) {
       console.error("moderation:", e);
       setMsgs([]);
@@ -1508,6 +1511,27 @@ function ScreenModeration({ abonne, token, onBack }) {
     }
   }
   useEffect(()=>{ charger(); },[]);
+
+  // Avertir l'auteur d'un message. Le compteur de l'abonné est mis à
+  // jour côté base (trigger) : l'app n'y touche jamais.
+  async function avertir(motif) {
+    const cible = warn; setWarn(null);
+    if(!cible) return;
+    setBusy(cible.id);
+    try {
+      const rows = await api.post("/avertissements", token, {
+        abonne_id: cible.abonne_id, message_id: cible.id,
+        moderateur_id: abonne.id, motif,
+      });
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      setAvert(list=>[...(row?[row]:[{abonne_id:cible.abonne_id,message_id:cible.id}]),...list]);
+    } catch(e) {
+      const deja = String(e?.message||"").includes("409");
+      setErr(deja ? "Cet auteur a déjà été averti pour ce message." : "Avertissement impossible.");
+      setTimeout(()=>setErr(null), 3500);
+    }
+    setBusy(null);
+  }
 
   async function setStatut(id, statut) {
     setBusy(id);
@@ -1526,6 +1550,9 @@ function ScreenModeration({ abonne, token, onBack }) {
   };
   const parMsg = {};
   for(const s of sig){ (parMsg[s.message_id] = parMsg[s.message_id] || []).push(s); }
+  const avertParAuteur = {};
+  for(const v of avert){ avertParAuteur[v.abonne_id] = (avertParAuteur[v.abonne_id]||0) + 1; }
+  const avertiPourMsg = new Set(avert.map(v=>v.message_id).filter(Boolean));
 
   if(msgs===null) return <div style={{padding:16}}><Spinner/></div>;
 
@@ -1566,6 +1593,9 @@ function ScreenModeration({ abonne, token, onBack }) {
       return <div key={m.id} style={{background:B.nightLL,border:`1px solid ${masque?B.red+"55":B.nightB}`,borderRadius:14,padding:"12px 14px",marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
           <span style={{fontSize:12,fontWeight:700,color:B.white}}>{m.auteur_prenom||"Abonné"}</span>
+          {(avertParAuteur[m.abonne_id]||0)>0 && (
+            <span style={{fontSize:9,color:B.gold,fontWeight:700}}>⚠️ {avertParAuteur[m.abonne_id]} avert.</span>
+          )}
           {m.est_officiel && <span style={{fontSize:9,color:B.day,fontWeight:700}}>OFFICIEL</span>}
           <span style={{fontSize:10,color:B.muted,marginLeft:"auto"}}>
             {m.created_at ? new Date(m.created_at).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : ""}
@@ -1599,6 +1629,12 @@ function ScreenModeration({ abonne, token, onBack }) {
             <button disabled={busy===m.id} onClick={()=>setStatut(m.id,"masque")}
               style={{flex:1,padding:"10px",background:B.red,border:"none",borderRadius:10,color:B.white,fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",opacity:busy===m.id?.6:1}}>MASQUER</button>
           )}
+          {m.abonne_id && (
+            avertiPourMsg.has(m.id)
+              ? <div style={{flex:1,padding:"10px",borderRadius:10,border:`1px solid ${B.nightB}`,color:B.muted,fontSize:11,fontWeight:700,textAlign:"center"}}>✓ Averti</div>
+              : <button disabled={busy===m.id} onClick={()=>setWarn(m)}
+                  style={{flex:1,padding:"10px",background:"none",border:`1px solid ${B.gold}66`,borderRadius:10,color:B.gold,fontFamily:"Orbitron,sans-serif",fontSize:11,fontWeight:700,cursor:"pointer",opacity:busy===m.id?.6:1}}>AVERTIR</button>
+          )}
         </div>
       </div>;
     })}
@@ -1606,6 +1642,30 @@ function ScreenModeration({ abonne, token, onBack }) {
     <div style={{fontSize:10,color:B.muted,lineHeight:1.6,marginTop:14,padding:"0 2px"}}>
       Un message masqué n'est jamais supprimé : il disparaît des fils mais reste consultable ici. Le masquage est automatique au 2ᵉ signalement, en attendant ta vérification.
     </div>
+
+    {warn && (
+      <div onClick={()=>setWarn(null)} style={{position:"fixed",inset:0,background:"#000000d8",zIndex:999,display:"flex",alignItems:"flex-end"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:B.nightL,borderRadius:"20px 20px 0 0",padding:"22px 18px 40px",width:"100%",maxWidth:430,margin:"0 auto",border:`1px solid ${B.nightB}`}}>
+          <div style={{width:36,height:4,background:B.nightB,borderRadius:2,margin:"0 auto 18px"}}/>
+          <div style={{fontFamily:"Orbitron,sans-serif",fontWeight:700,fontSize:15,color:B.white,marginBottom:6}}>Avertir {warn.auteur_prenom||"cet abonné"}</div>
+          <div style={{fontSize:11,color:B.muted,lineHeight:1.6,marginBottom:16}}>
+            L'avertissement est enregistré avec ton nom, la date et le motif. Il reste consultable si l'abonné conteste. Un seul avertissement par message.
+          </div>
+          {[
+            ["insultes",   "😠 Insultes ou agressivité"],
+            ["haine",      "🚫 Propos haineux ou discriminatoires"],
+            ["sexuel",     "⚠️ Contenu à caractère sexuel"],
+            ["coordonnees","📵 Demande de coordonnées privées"],
+            ["spam",       "🔁 Spam ou hors-sujet"],
+            ["autre",      "❓ Autre raison"],
+          ].map(([code,label])=>(
+            <button key={code} onClick={()=>avertir(code)}
+              style={{width:"100%",textAlign:"left",padding:"12px 14px",marginBottom:8,background:B.nightLL,border:`1px solid ${B.nightB}`,borderRadius:12,color:B.white,fontFamily:"inherit",fontSize:12.5,cursor:"pointer"}}>{label}</button>
+          ))}
+          <button onClick={()=>setWarn(null)} style={{width:"100%",padding:"11px",marginTop:6,background:"none",border:"none",color:B.muted,fontFamily:"inherit",fontSize:12,cursor:"pointer"}}>Annuler</button>
+        </div>
+      </div>
+    )}
   </div>;
 }
 
