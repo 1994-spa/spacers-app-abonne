@@ -374,14 +374,26 @@ function LoginScreen({ onLogin }) {
         expires_at:Math.floor(Date.now()/1000)+(data.expires_in||3600), user:data.user,
       };
 
-      // Charger les billets de cet email
+      // Charger les billets de cet email.
+      // ilike (sans joker) = comparaison insensible à la casse : une adresse
+      // enregistrée avec des majuscules par l'import reste trouvable.
       const abRes = await fetch(
-        `${SUPA_URL}/rest/v1/abonnes?email=eq.${encodeURIComponent(email.trim().toLowerCase())}&order=prenom.asc`,
+        `${SUPA_URL}/rest/v1/abonnes?email=ilike.${encodeURIComponent(email.trim())}&order=prenom.asc`,
         {headers:{"apikey":SUPA_ANON,"Authorization":`Bearer ${data.access_token}`}}
       );
-      const abonnes = await abRes.json();
+      const brut = await abRes.json();
 
-      if(!abonnes?.length) { setErr("Aucun abonnement trouvé pour cet email."); setLoading(false); return; }
+      // On écarte les abonnements annulés (billet supprimé chez Tickie) et les
+      // comptes effacés : ils ne doivent plus apparaître dans le sélecteur.
+      const HS = ["annule","supprime"];
+      const abonnes = (Array.isArray(brut)?brut:[]).filter(a=>!HS.includes(String(a.statut||"").toLowerCase()));
+
+      if(!abonnes?.length) {
+        setErr(Array.isArray(brut) && brut.length
+          ? "Ton abonnement n'est plus actif. Contacte le club."
+          : "Aucun abonnement trouvé pour cet email.");
+        setLoading(false); return;
+      }
 
       if(abonnes.length===1) {
         localStorage.setItem("spacers_abonne", JSON.stringify(abonnes[0]));
